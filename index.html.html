@@ -1,0 +1,957 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Denigris — Gestão de Estoque</title>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root {
+  --black: #0d0d0d;
+  --dark: #1a1a1a;
+  --dark2: #242424;
+  --dark3: #2e2e2e;
+  --silver: #C0C0C0;
+  --silver2: #e8e8e8;
+  --accent: #C0C0C0;
+  --blue: #378ADD;
+  --green: #4a9e5c;
+  --red: #c0392b;
+  --amber: #d4910a;
+  --text: #f0f0f0;
+  --text2: #a0a0a0;
+  --text3: #666;
+  --border: rgba(192,192,192,0.15);
+  --border2: rgba(192,192,192,0.3);
+  --card: #1e1e1e;
+  --card2: #232323;
+  --radius: 10px;
+  --radius2: 6px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Inter', sans-serif; background: var(--black); color: var(--text); min-height: 100vh; overflow-x: hidden; }
+
+/* ─── SCROLLBAR ─── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--dark); }
+::-webkit-scrollbar-thumb { background: var(--dark3); border-radius: 3px; }
+
+/* ─── LOGIN ─── */
+#loginScreen {
+  position: fixed; inset: 0; z-index: 9999;
+  background: var(--black);
+  display: flex; align-items: center; justify-content: center;
+}
+.login-bg {
+  position: absolute; inset: 0; overflow: hidden;
+}
+.login-bg::before {
+  content: ''; position: absolute; inset: 0;
+  background: radial-gradient(ellipse 80% 60% at 50% 0%, rgba(192,192,192,0.06) 0%, transparent 70%);
+}
+.login-lines {
+  position: absolute; inset: 0;
+  background-image: repeating-linear-gradient(90deg, rgba(192,192,192,0.03) 0px, rgba(192,192,192,0.03) 1px, transparent 1px, transparent 80px),
+                    repeating-linear-gradient(0deg, rgba(192,192,192,0.03) 0px, rgba(192,192,192,0.03) 1px, transparent 1px, transparent 80px);
+}
+.login-box {
+  position: relative; z-index: 1;
+  width: 380px; max-width: 92vw;
+  background: var(--dark);
+  border: 1px solid var(--border2);
+  border-radius: 16px;
+  padding: 40px 36px;
+  animation: fadeUp 0.5s ease;
+}
+@keyframes fadeUp { from { opacity:0; transform: translateY(20px); } to { opacity:1; transform: translateY(0); } }
+
+.login-logo { text-align: center; margin-bottom: 28px; }
+.login-logo svg { display: block; margin: 0 auto 14px; }
+.login-logo h1 { font-family: 'Rajdhani', sans-serif; font-size: 22px; font-weight: 700; color: var(--silver); letter-spacing: 3px; }
+.login-logo p { font-size: 11px; color: var(--text3); margin-top: 4px; letter-spacing: 1px; }
+
+.login-field { margin-bottom: 14px; }
+.login-field label { display: block; font-size: 10px; color: var(--text2); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+.login-field input {
+  width: 100%; padding: 11px 14px;
+  background: var(--dark2); border: 1px solid var(--border2);
+  border-radius: var(--radius2); color: var(--text); font-size: 14px; font-family: 'Inter', sans-serif;
+  transition: border-color 0.2s;
+  outline: none;
+}
+.login-field input:focus { border-color: var(--silver); }
+.login-btn {
+  width: 100%; padding: 13px; margin-top: 8px;
+  background: var(--silver); color: var(--black); border: none;
+  border-radius: var(--radius2); font-size: 13px; font-weight: 600;
+  font-family: 'Rajdhani', sans-serif; letter-spacing: 2px; text-transform: uppercase;
+  cursor: pointer; transition: opacity 0.2s, transform 0.1s;
+}
+.login-btn:hover { opacity: 0.88; }
+.login-btn:active { transform: scale(0.98); }
+.login-error { font-size: 12px; color: var(--red); text-align: center; margin-top: 10px; min-height: 18px; }
+
+/* ─── APP ─── */
+#app { display: none; min-height: 100vh; }
+
+/* ─── HEADER ─── */
+.header {
+  background: var(--dark);
+  border-bottom: 1px solid var(--border);
+  padding: 0 28px;
+  display: flex; align-items: center; justify-content: space-between;
+  height: 58px; position: sticky; top: 0; z-index: 100;
+}
+.header-left { display: flex; align-items: center; gap: 16px; }
+.header-logo { display: flex; align-items: center; gap: 10px; }
+.header-logo span { font-family: 'Rajdhani', sans-serif; font-size: 18px; font-weight: 700; color: var(--silver); letter-spacing: 2px; }
+.header-divider { width: 1px; height: 24px; background: var(--border2); }
+.header-right { display: flex; align-items: center; gap: 12px; }
+.user-badge {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--dark2); border: 1px solid var(--border);
+  border-radius: 20px; padding: 5px 12px 5px 8px;
+}
+.user-avatar {
+  width: 26px; height: 26px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 600; background: var(--dark3); color: var(--silver);
+}
+.user-name { font-size: 12px; color: var(--text2); }
+.role-tag {
+  font-size: 9px; padding: 2px 7px; border-radius: 10px; font-weight: 600;
+  letter-spacing: 0.5px; text-transform: uppercase;
+}
+.role-editor { background: rgba(192,192,192,0.12); color: var(--silver); }
+.role-viewer { background: rgba(55,138,221,0.15); color: #6aaeed; }
+.logout-btn {
+  background: none; border: 1px solid var(--border2); color: var(--text3);
+  padding: 5px 12px; border-radius: var(--radius2); font-size: 11px;
+  cursor: pointer; transition: all 0.15s;
+}
+.logout-btn:hover { border-color: var(--silver); color: var(--text); }
+
+/* ─── TABS ─── */
+.tabs-bar {
+  display: flex; gap: 0; padding: 0 28px;
+  background: var(--dark); border-bottom: 1px solid var(--border);
+}
+.tab-btn {
+  padding: 10px 22px; font-size: 12px; font-weight: 500;
+  color: var(--text3); background: none; border: none;
+  cursor: pointer; border-bottom: 2px solid transparent;
+  margin-bottom: -1px; transition: color 0.15s;
+  display: flex; align-items: center; gap: 7px; letter-spacing: 0.3px;
+}
+.tab-btn:hover { color: var(--text2); }
+.tab-btn.active { color: var(--silver); border-bottom: 2px solid var(--silver); }
+.tab-dot { width: 7px; height: 7px; border-radius: 50%; }
+
+/* ─── CONTENT ─── */
+.content { padding: 24px 28px; max-width: 1400px; margin: 0 auto; }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* ─── METRICS ─── */
+.metrics-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 12px; margin-bottom: 20px; }
+.metric-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px 18px;
+  border-left: 3px solid var(--silver); cursor: pointer; transition: border-color 0.15s, background 0.15s;
+}
+.metric-card:hover { background: var(--card2); border-left-color: var(--silver2); }
+.metric-card.alert { border-left-color: var(--red); }
+.metric-card.alert:hover { border-left-color: #e05345; }
+.metric-card.alert .metric-value { color: #e05345; }
+.metric-card.success { border-left-color: var(--green); }
+.metric-card.success .metric-value { color: #5cb86c; }
+.metric-card.info { border-left-color: var(--blue); }
+.metric-card.info .metric-value { color: #6aaeed; }
+.metric-label { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 6px; }
+.metric-value { font-family: 'Rajdhani', sans-serif; font-size: 26px; font-weight: 700; color: var(--silver2); letter-spacing: 0.5px; }
+.metric-sub { font-size: 10px; color: var(--text3); margin-top: 3px; }
+
+/* ─── CHARTS ─── */
+.charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+.chart-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 18px;
+}
+.chart-title { font-family: 'Rajdhani', sans-serif; font-size: 12px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 3px; }
+.chart-hint { font-size: 10px; color: var(--text3); margin-bottom: 10px; }
+
+/* ─── LEGEND ─── */
+.legend { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 8px; }
+.legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text2); cursor: pointer; padding: 3px 6px; border-radius: 4px; transition: background 0.12s; }
+.legend-item:hover { background: var(--dark2); color: var(--text); }
+.legend-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+
+/* ─── BAR ROWS ─── */
+.bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; cursor: pointer; padding: 4px 6px; border-radius: 6px; transition: background 0.12s; }
+.bar-row:hover { background: var(--dark2); }
+.bar-label { font-size: 11px; color: var(--text2); width: 120px; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bar-track { flex: 1; height: 12px; background: var(--dark3); border-radius: 4px; overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 4px; }
+.bar-val { font-size: 11px; color: var(--text3); width: 70px; text-align: right; flex-shrink: 0; }
+
+/* ─── CURVA BADGE ─── */
+.curva-badge { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; font-size: 10px; font-weight: 700; }
+.curva-A { background: rgba(74,158,92,0.2); color: #5cb86c; }
+.curva-B { background: rgba(55,138,221,0.2); color: #6aaeed; }
+.curva-C { background: rgba(212,145,10,0.2); color: #e0a82a; }
+.curva-D { background: rgba(192,57,43,0.2); color: #e05345; }
+
+/* ─── STATUS BAR ─── */
+.status-bar { display: flex; border-radius: 6px; overflow: hidden; height: 24px; margin-bottom: 6px; }
+.status-seg { display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; color: rgba(255,255,255,0.9); cursor: pointer; transition: opacity 0.15s; }
+.status-seg:hover { opacity: 0.85; }
+
+/* ─── TABLE ─── */
+.table-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; margin-bottom: 20px; }
+.table-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+.search-input { background: var(--dark2); border: 1px solid var(--border2); border-radius: var(--radius2); padding: 7px 12px; font-size: 12px; color: var(--text); width: 180px; outline: none; font-family: 'Inter', sans-serif; transition: border-color 0.2s; }
+.search-input:focus { border-color: var(--silver); }
+.search-input::placeholder { color: var(--text3); }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+th { text-align: left; padding: 8px 10px; color: var(--text3); font-weight: 500; border-bottom: 1px solid var(--border); font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+td { padding: 9px 10px; color: var(--text2); border-bottom: 1px solid rgba(255,255,255,0.04); }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: var(--dark2); color: var(--text); }
+
+/* ─── COMPARE ─── */
+.compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+.compare-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; }
+.compare-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+.unit-badge { padding: 4px 12px; border-radius: 12px; font-size: 11px; font-weight: 600; letter-spacing: 0.5px; }
+.badge-itu { background: rgba(55,138,221,0.15); color: #6aaeed; }
+.badge-itapeva { background: rgba(74,158,92,0.15); color: #5cb86c; }
+.compare-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
+.compare-row:last-child { border-bottom: none; }
+.compare-row-label { font-size: 12px; color: var(--text3); }
+.compare-row-val { font-size: 13px; font-weight: 600; color: var(--text); font-family: 'Rajdhani', sans-serif; }
+
+/* ─── UPLOAD ─── */
+.upload-section { margin-bottom: 20px; }
+.upload-zone {
+  border: 1.5px dashed var(--border2);
+  border-radius: var(--radius); padding: 28px;
+  text-align: center; cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  background: var(--card);
+}
+.upload-zone:hover { border-color: var(--silver); background: var(--dark2); }
+.upload-zone.dragging { border-color: var(--silver); background: var(--dark2); }
+.upload-icon { font-size: 32px; margin-bottom: 8px; }
+.upload-zone h3 { font-family: 'Rajdhani', sans-serif; font-size: 16px; color: var(--text2); font-weight: 600; letter-spacing: 1px; }
+.upload-zone p { font-size: 11px; color: var(--text3); margin-top: 4px; }
+input[type="file"] { display: none; }
+.upload-result { background: var(--dark2); border: 1px solid var(--green); border-radius: var(--radius2); padding: 10px 16px; margin-top: 10px; font-size: 12px; color: #5cb86c; display: none; }
+
+/* ─── TWO COL ─── */
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+
+/* ─── MODAL ─── */
+.modal-overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,0.75); z-index: 1000;
+  align-items: center; justify-content: center;
+  backdrop-filter: blur(4px);
+}
+.modal-overlay.active { display: flex; animation: fadeIn 0.2s ease; }
+@keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+.modal-box {
+  background: var(--dark); border: 1px solid var(--border2);
+  border-radius: 14px; padding: 24px 28px;
+  width: min(640px, 92vw); max-height: 82vh; overflow-y: auto;
+  animation: slideUp 0.2s ease;
+}
+@keyframes slideUp { from { transform: translateY(16px); opacity:0; } to { transform: translateY(0); opacity:1; } }
+.modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.modal-title { font-family: 'Rajdhani', sans-serif; font-size: 18px; font-weight: 700; color: var(--silver); letter-spacing: 1px; }
+.modal-badge { font-size: 10px; padding: 3px 10px; border-radius: 10px; font-weight: 600; letter-spacing: 0.5px; margin-left: 10px; }
+.modal-close { background: none; border: 1px solid var(--border2); color: var(--text3); width: 28px; height: 28px; border-radius: 50%; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; transition: all 0.15s; }
+.modal-close:hover { border-color: var(--silver); color: var(--text); }
+.modal-kpis { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-bottom: 16px; }
+.modal-kpi { background: var(--dark2); border-radius: var(--radius2); padding: 12px 14px; border: 1px solid var(--border); }
+.modal-kpi-label { font-size: 9px; color: var(--text3); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.8px; }
+.modal-kpi-val { font-family: 'Rajdhani', sans-serif; font-size: 20px; font-weight: 700; color: var(--silver2); }
+.modal-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.modal-table th { text-align: left; padding: 7px 9px; color: var(--text3); font-weight: 500; border-bottom: 1px solid var(--border); font-size: 10px; text-transform: uppercase; }
+.modal-table td { padding: 7px 9px; color: var(--text2); border-bottom: 1px solid rgba(255,255,255,0.04); }
+.modal-table tr:last-child td { border-bottom: none; }
+.modal-table tr:hover td { background: var(--dark2); color: var(--text); }
+
+/* ─── VIEWER LOCK ─── */
+.viewer-lock { display: flex; align-items: center; gap: 8px; background: rgba(55,138,221,0.08); border: 1px solid rgba(55,138,221,0.2); border-radius: var(--radius2); padding: 10px 14px; margin-bottom: 16px; font-size: 12px; color: #6aaeed; }
+.viewer-lock svg { flex-shrink: 0; }
+
+/* ─── FOOTER ─── */
+.footer { text-align: center; padding: 20px; font-size: 10px; color: var(--text3); border-top: 1px solid var(--border); margin-top: 12px; letter-spacing: 0.5px; }
+
+@media (max-width: 768px) {
+  .content { padding: 16px; }
+  .metrics-grid { grid-template-columns: 1fr 1fr; }
+  .charts-row, .two-col, .compare-grid { grid-template-columns: 1fr; }
+  .modal-kpis { grid-template-columns: 1fr 1fr; }
+  .header { padding: 0 16px; }
+  .tabs-bar { padding: 0 16px; overflow-x: auto; }
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════ LOGIN ═══════════════ -->
+<div id="loginScreen">
+  <div class="login-bg">
+    <div class="login-lines"></div>
+  </div>
+  <div class="login-box">
+    <div class="login-logo">
+      <svg width="56" height="56" viewBox="0 0 56 56">
+        <circle cx="28" cy="28" r="27" fill="none" stroke="rgba(192,192,192,0.3)" stroke-width="1"/>
+        <circle cx="28" cy="28" r="24" fill="#1a1a1a" stroke="rgba(192,192,192,0.5)" stroke-width="0.5"/>
+        <polygon points="28,7 32,22 28,26" fill="#C0C0C0"/>
+        <polygon points="28,7 32,22 28,26" fill="#C0C0C0" transform="rotate(120 28 28)"/>
+        <polygon points="28,7 32,22 28,26" fill="#C0C0C0" transform="rotate(240 28 28)"/>
+        <circle cx="28" cy="28" r="5" fill="#C0C0C0"/>
+        <circle cx="28" cy="28" r="24" fill="none" stroke="rgba(192,192,192,0.2)" stroke-width="0.5"/>
+      </svg>
+      <h1>DENIGRIS</h1>
+      <p>GESTÃO DE ESTOQUE · MERCEDES-BENZ</p>
+    </div>
+    <div class="login-field">
+      <label>Usuário</label>
+      <input type="text" id="loginUser" placeholder="seu.usuario" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <div class="login-field">
+      <label>Senha</label>
+      <input type="password" id="loginPass" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <button class="login-btn" onclick="doLogin()">Entrar</button>
+    <div class="login-error" id="loginError"></div>
+  </div>
+</div>
+
+<!-- ═══════════════ APP ═══════════════ -->
+<div id="app">
+
+  <!-- HEADER -->
+  <div class="header">
+    <div class="header-left">
+      <div class="header-logo">
+        <svg width="32" height="32" viewBox="0 0 44 44">
+          <circle cx="22" cy="22" r="20" fill="rgba(192,192,192,0.15)" stroke="rgba(192,192,192,0.4)" stroke-width="0.5"/>
+          <polygon points="22,5 25.5,19 22,22" fill="#C0C0C0"/>
+          <polygon points="22,5 25.5,19 22,22" fill="#C0C0C0" transform="rotate(120 22 22)"/>
+          <polygon points="22,5 25.5,19 22,22" fill="#C0C0C0" transform="rotate(240 22 22)"/>
+          <circle cx="22" cy="22" r="4" fill="#C0C0C0"/>
+        </svg>
+        <span>DENIGRIS</span>
+      </div>
+      <div class="header-divider"></div>
+      <span style="font-size:11px;color:var(--text3);letter-spacing:0.5px;">Gestão de Estoque</span>
+    </div>
+    <div class="header-right">
+      <div class="user-badge">
+        <div class="user-avatar" id="userAvatar">–</div>
+        <span class="user-name" id="userNameDisplay">–</span>
+        <span class="role-tag" id="roleTag">–</span>
+      </div>
+      <button class="logout-btn" onclick="doLogout()">Sair</button>
+    </div>
+  </div>
+
+  <!-- TABS -->
+  <div class="tabs-bar">
+    <button class="tab-btn active" onclick="switchTab('geral')">
+      <span class="tab-dot" style="background:var(--silver);"></span> Visão Geral
+    </button>
+    <button class="tab-btn" onclick="switchTab('itu')">
+      <span class="tab-dot" style="background:#378ADD;"></span> Itu
+    </button>
+    <button class="tab-btn" onclick="switchTab('itapeva')">
+      <span class="tab-dot" style="background:#4a9e5c;"></span> Itapeva
+    </button>
+    <button class="tab-btn" id="tabImportar" onclick="switchTab('importar')">
+      <span class="tab-dot" style="background:var(--amber);"></span> Importar Planilha
+    </button>
+  </div>
+
+  <!-- CONTENT -->
+  <div class="content">
+
+    <!-- ══ GERAL ══ -->
+    <div id="tab-geral" class="tab-panel active">
+      <div class="metrics-grid">
+        <div class="metric-card" onclick="openModal('itu','all')">
+          <div class="metric-label">SKUs Consolidados</div>
+          <div class="metric-value" id="g-skus">2.087</div>
+          <div class="metric-sub">Itu 1.380 + Itapeva 707</div>
+        </div>
+        <div class="metric-card" onclick="openModal('itu','all')">
+          <div class="metric-label">Total de Peças</div>
+          <div class="metric-value" id="g-pecas">21.734</div>
+          <div class="metric-sub">Itu 14.003 + Itapeva 7.731</div>
+        </div>
+        <div class="metric-card success">
+          <div class="metric-label">Valor Total (Venda)</div>
+          <div class="metric-value" id="g-valor">R$ 6,11M</div>
+          <div class="metric-sub">Itu R$2,75M + Itapeva R$3,37M</div>
+        </div>
+        <div class="metric-card alert" onclick="openModal('itu','parados')">
+          <div class="metric-label">Itens Parados</div>
+          <div class="metric-value" id="g-parados">340</div>
+          <div class="metric-sub">Itu 206 + Itapeva 134</div>
+        </div>
+      </div>
+
+      <div class="compare-grid">
+        <div class="compare-card">
+          <div class="compare-header">
+            <span class="unit-badge badge-itu">Itu</span>
+            <span style="font-size:13px;font-weight:600;color:var(--text);font-family:'Rajdhani',sans-serif;letter-spacing:0.5px;">Resumo da Unidade</span>
+          </div>
+          <div class="compare-row"><span class="compare-row-label">SKUs</span><span class="compare-row-val">1.380</span></div>
+          <div class="compare-row"><span class="compare-row-label">Peças físicas</span><span class="compare-row-val">14.003</span></div>
+          <div class="compare-row"><span class="compare-row-label">Valor de venda</span><span class="compare-row-val">R$ 2,75M</span></div>
+          <div class="compare-row"><span class="compare-row-label">Custo total</span><span class="compare-row-val">R$ 1,18M</span></div>
+          <div class="compare-row"><span class="compare-row-label">Margem bruta</span><span class="compare-row-val" style="color:#5cb86c;">57,2%</span></div>
+          <div class="compare-row"><span class="compare-row-label">Itens parados</span><span class="compare-row-val" style="color:#e05345;">206 (15%)</span></div>
+        </div>
+        <div class="compare-card">
+          <div class="compare-header">
+            <span class="unit-badge badge-itapeva">Itapeva</span>
+            <span style="font-size:13px;font-weight:600;color:var(--text);font-family:'Rajdhani',sans-serif;letter-spacing:0.5px;">Resumo da Unidade</span>
+          </div>
+          <div class="compare-row"><span class="compare-row-label">SKUs</span><span class="compare-row-val">707</span></div>
+          <div class="compare-row"><span class="compare-row-label">Peças físicas</span><span class="compare-row-val">7.731</span></div>
+          <div class="compare-row"><span class="compare-row-label">Valor de venda</span><span class="compare-row-val">R$ 3,37M</span></div>
+          <div class="compare-row"><span class="compare-row-label">Custo total</span><span class="compare-row-val">R$ 2,03M</span></div>
+          <div class="compare-row"><span class="compare-row-label">Margem bruta</span><span class="compare-row-val" style="color:#e0a82a;">39,6%</span></div>
+          <div class="compare-row"><span class="compare-row-label">Itens parados</span><span class="compare-row-val" style="color:#e05345;">134 (19%)</span></div>
+        </div>
+      </div>
+
+      <div class="charts-row">
+        <div class="chart-card">
+          <div class="chart-title">Valor por Grupo — Comparativo</div>
+          <div class="chart-hint">Itu (azul) vs Itapeva (verde)</div>
+          <div id="geralBars"></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Curva ABC — Consolidado</div>
+          <div class="chart-hint">Clique nas fatias para detalhar</div>
+          <div class="legend">
+            <span class="legend-item"><span class="legend-dot" style="background:#4a9e5c;"></span>A — 188</span>
+            <span class="legend-item"><span class="legend-dot" style="background:#378ADD;"></span>B — 276</span>
+            <span class="legend-item"><span class="legend-dot" style="background:#d4910a;"></span>C — 866</span>
+            <span class="legend-item"><span class="legend-dot" style="background:#c0392b;"></span>D — 756</span>
+          </div>
+          <div style="position:relative;height:200px;"><canvas id="geralCurvaChart"></canvas></div>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="chart-card">
+          <div class="chart-title">Saúde — Itu</div>
+          <div style="margin-top:10px;">
+            <div class="status-bar">
+              <div class="status-seg" style="flex:1174;background:#2a6fad;" onclick="openModal('itu','ativos')">Ativos 1.174</div>
+              <div class="status-seg" style="flex:206;background:#a33025;" onclick="openModal('itu','parados')">206</div>
+            </div>
+            <div style="display:flex;gap:10px;margin-top:12px;">
+              <div style="flex:1;background:var(--dark2);border-radius:var(--radius2);padding:12px;text-align:center;border:1px solid var(--border);">
+                <div style="font-family:'Rajdhani',sans-serif;font-size:20px;font-weight:700;color:#5cb86c;">57,2%</div>
+                <div style="font-size:10px;color:var(--text3);margin-top:2px;">margem bruta</div>
+              </div>
+              <div style="flex:1;background:var(--dark2);border-radius:var(--radius2);padding:12px;text-align:center;border:1px solid var(--border);">
+                <div style="font-family:'Rajdhani',sans-serif;font-size:20px;font-weight:700;color:var(--silver2);">R$1,18M</div>
+                <div style="font-size:10px;color:var(--text3);margin-top:2px;">custo total</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Saúde — Itapeva</div>
+          <div style="margin-top:10px;">
+            <div class="status-bar">
+              <div class="status-seg" style="flex:573;background:#2e7a44;" onclick="openModal('itapeva','ativos')">Ativos 573</div>
+              <div class="status-seg" style="flex:134;background:#a33025;" onclick="openModal('itapeva','parados')">134</div>
+            </div>
+            <div style="display:flex;gap:10px;margin-top:12px;">
+              <div style="flex:1;background:var(--dark2);border-radius:var(--radius2);padding:12px;text-align:center;border:1px solid var(--border);">
+                <div style="font-family:'Rajdhani',sans-serif;font-size:20px;font-weight:700;color:#e0a82a;">39,6%</div>
+                <div style="font-size:10px;color:var(--text3);margin-top:2px;">margem bruta</div>
+              </div>
+              <div style="flex:1;background:var(--dark2);border-radius:var(--radius2);padding:12px;text-align:center;border:1px solid var(--border);">
+                <div style="font-family:'Rajdhani',sans-serif;font-size:20px;font-weight:700;color:var(--silver2);">R$2,03M</div>
+                <div style="font-size:10px;color:var(--text3);margin-top:2px;">custo total</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ ITU ══ -->
+    <div id="tab-itu" class="tab-panel">
+      <div class="metrics-grid">
+        <div class="metric-card" onclick="openModal('itu','all')"><div class="metric-label">SKUs — Itu</div><div class="metric-value">1.380</div><div class="metric-sub">itens distintos</div></div>
+        <div class="metric-card" onclick="openModal('itu','all')"><div class="metric-label">Peças Físicas</div><div class="metric-value">14.003</div><div class="metric-sub">unidades</div></div>
+        <div class="metric-card success" onclick="openModal('itu','valor')"><div class="metric-label">Valor de Venda</div><div class="metric-value">R$ 2,75M</div><div class="metric-sub">Margem: 57,2%</div></div>
+        <div class="metric-card alert" onclick="openModal('itu','parados')"><div class="metric-label">Sem Venda Recente</div><div class="metric-value">206</div><div class="metric-sub">itens parados (15%)</div></div>
+      </div>
+      <div class="charts-row">
+        <div class="chart-card">
+          <div class="chart-title">Curva ABC — Itu</div>
+          <div class="chart-hint">Clique nas fatias para detalhar</div>
+          <div class="legend">
+            <span class="legend-item" onclick="openModal('itu','curva','A')"><span class="legend-dot" style="background:#4a9e5c;"></span>A — 132</span>
+            <span class="legend-item" onclick="openModal('itu','curva','B')"><span class="legend-dot" style="background:#378ADD;"></span>B — 219</span>
+            <span class="legend-item" onclick="openModal('itu','curva','C')"><span class="legend-dot" style="background:#d4910a;"></span>C — 570</span>
+            <span class="legend-item" onclick="openModal('itu','curva','D')"><span class="legend-dot" style="background:#c0392b;"></span>D — 459</span>
+          </div>
+          <div style="position:relative;height:200px;"><canvas id="ituCurvaChart"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Valor por Grupo — Itu</div>
+          <div class="chart-hint">Clique para detalhar</div>
+          <div id="ituBars" style="margin-top:8px;"></div>
+        </div>
+      </div>
+      <div class="table-card">
+        <div class="table-header">
+          <div class="chart-title" style="margin-bottom:0;">Top 10 Itens — Itu</div>
+          <input class="search-input" type="text" placeholder="Buscar peça..." oninput="filterTable('itu',this.value)">
+        </div>
+        <div style="overflow-x:auto;">
+          <table><thead><tr><th>#</th><th>Descrição</th><th>Curva</th><th style="text-align:right">Qtd.</th><th style="text-align:right">Preço</th><th style="text-align:right">Valor Total</th></tr></thead>
+          <tbody id="ituTableBody"></tbody></table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ ITAPEVA ══ -->
+    <div id="tab-itapeva" class="tab-panel">
+      <div class="metrics-grid">
+        <div class="metric-card" onclick="openModal('itapeva','all')"><div class="metric-label">SKUs — Itapeva</div><div class="metric-value">707</div><div class="metric-sub">itens distintos</div></div>
+        <div class="metric-card" onclick="openModal('itapeva','all')"><div class="metric-label">Peças Físicas</div><div class="metric-value">7.731</div><div class="metric-sub">unidades</div></div>
+        <div class="metric-card info" onclick="openModal('itapeva','valor')"><div class="metric-label">Valor de Venda</div><div class="metric-value">R$ 3,37M</div><div class="metric-sub">Margem: 39,6%</div></div>
+        <div class="metric-card alert" onclick="openModal('itapeva','parados')"><div class="metric-label">Sem Venda Recente</div><div class="metric-value">134</div><div class="metric-sub">itens parados (19%)</div></div>
+      </div>
+      <div class="charts-row">
+        <div class="chart-card">
+          <div class="chart-title">Curva ABC — Itapeva</div>
+          <div class="chart-hint">Clique nas fatias para detalhar</div>
+          <div class="legend">
+            <span class="legend-item" onclick="openModal('itapeva','curva','A')"><span class="legend-dot" style="background:#4a9e5c;"></span>A — 56</span>
+            <span class="legend-item" onclick="openModal('itapeva','curva','B')"><span class="legend-dot" style="background:#378ADD;"></span>B — 57</span>
+            <span class="legend-item" onclick="openModal('itapeva','curva','C')"><span class="legend-dot" style="background:#d4910a;"></span>C — 296</span>
+            <span class="legend-item" onclick="openModal('itapeva','curva','D')"><span class="legend-dot" style="background:#c0392b;"></span>D — 297</span>
+          </div>
+          <div style="position:relative;height:200px;"><canvas id="itapevaCurvaChart"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Valor por Grupo — Itapeva</div>
+          <div class="chart-hint">Clique para detalhar</div>
+          <div id="itapevaBars" style="margin-top:8px;"></div>
+        </div>
+      </div>
+      <div class="table-card">
+        <div class="table-header">
+          <div class="chart-title" style="margin-bottom:0;">Top 10 Itens — Itapeva</div>
+          <input class="search-input" type="text" placeholder="Buscar peça..." oninput="filterTable('itapeva',this.value)">
+        </div>
+        <div style="overflow-x:auto;">
+          <table><thead><tr><th>#</th><th>Descrição</th><th>Curva</th><th style="text-align:right">Qtd.</th><th style="text-align:right">Preço</th><th style="text-align:right">Valor Total</th></tr></thead>
+          <tbody id="itapevaTableBody"></tbody></table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ IMPORTAR ══ -->
+    <div id="tab-importar" class="tab-panel">
+      <div id="viewerLockMsg" class="viewer-lock" style="display:none;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+        Seu perfil é de <strong style="margin:0 4px;">Visualizador</strong> — apenas editores podem importar planilhas.
+      </div>
+      <div id="uploadArea">
+        <div class="upload-section">
+          <div class="chart-title" style="margin-bottom:14px;">Selecione a unidade e importe a planilha</div>
+          <div style="display:flex;gap:10px;margin-bottom:16px;">
+            <button id="btnUnidadeItu" onclick="setUnidade('itu')" style="flex:1;padding:12px;background:rgba(55,138,221,0.15);border:1px solid rgba(55,138,221,0.3);border-radius:var(--radius);color:#6aaeed;font-size:13px;font-weight:600;cursor:pointer;font-family:'Rajdhani',sans-serif;letter-spacing:1px;transition:all 0.15s;">ITU</button>
+            <button id="btnUnidadeItapeva" onclick="setUnidade('itapeva')" style="flex:1;padding:12px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);color:var(--text3);font-size:13px;font-weight:600;cursor:pointer;font-family:'Rajdhani',sans-serif;letter-spacing:1px;transition:all 0.15s;">ITAPEVA</button>
+          </div>
+          <label for="fileInput">
+            <div class="upload-zone" id="uploadZone">
+              <div class="upload-icon">📂</div>
+              <h3>ARRASTE OU CLIQUE PARA IMPORTAR</h3>
+              <p>Formatos aceitos: .xlsx, .xls, .csv</p>
+            </div>
+          </label>
+          <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" onchange="handleFileUpload(event)">
+          <div class="upload-result" id="uploadResult"></div>
+        </div>
+
+        <div class="chart-card" style="margin-bottom:20px;">
+          <div class="chart-title" style="margin-bottom:12px;">Histórico de Importações</div>
+          <table>
+            <thead><tr><th>Data</th><th>Unidade</th><th>Arquivo</th><th>Usuário</th><th>SKUs</th><th>Status</th></tr></thead>
+            <tbody id="importHistory">
+              <tr><td>18/03/2026 — 09:14</td><td><span class="unit-badge badge-itu" style="font-size:10px;">Itu</span></td><td>Estoque_Itu.xlsx</td><td>admin</td><td>1.380</td><td><span style="color:#5cb86c;font-size:11px;">✓ Importado</span></td></tr>
+              <tr><td>18/03/2026 — 09:22</td><td><span class="unit-badge badge-itapeva" style="font-size:10px;">Itapeva</span></td><td>Estoque_itapeva.xlsx</td><td>admin</td><td>707</td><td><span style="color:#5cb86c;font-size:11px;">✓ Importado</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+
+  <div class="footer">DENIGRIS CONCESSIONÁRIA MERCEDES-BENZ &nbsp;·&nbsp; SISTEMA DE GESTÃO DE ESTOQUE &nbsp;·&nbsp; © 2026</div>
+</div><!-- /app -->
+
+<!-- MODAL -->
+<div class="modal-overlay" id="modalOverlay" onclick="closeModalOutside(event)">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span class="modal-title" id="modalTitle">Detalhes</span>
+        <span id="modalBadge" class="modal-badge"></span>
+      </div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-kpis" id="modalKpis"></div>
+    <div style="overflow-x:auto;">
+      <table class="modal-table">
+        <thead><tr id="modalThead"></tr></thead>
+        <tbody id="modalTbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════ USUÁRIOS ═══════════════
+// Para adicionar usuários: { user, pass, name, role: 'editor' ou 'viewer' }
+const USERS = [
+  { user: 'admin',      pass: 'denigris2026',  name: 'Administrador', role: 'editor' },
+  { user: 'gerente',    pass: 'gerente123',    name: 'Gerente',       role: 'editor' },
+  { user: 'estoque',    pass: 'estoque123',    name: 'Estoque',       role: 'editor' },
+  { user: 'vendas',     pass: 'vendas123',     name: 'Vendas',        role: 'viewer' },
+  { user: 'diretor',    pass: 'diretor2026',   name: 'Diretor',       role: 'viewer' },
+];
+
+let currentUser = null;
+let selectedUnit = 'itu';
+
+function doLogin() {
+  const u = document.getElementById('loginUser').value.trim().toLowerCase();
+  const p = document.getElementById('loginPass').value;
+  const found = USERS.find(x => x.user === u && x.pass === p);
+  if (found) {
+    currentUser = found;
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    document.getElementById('userAvatar').textContent = found.name.charAt(0).toUpperCase();
+    document.getElementById('userNameDisplay').textContent = found.name;
+    const rt = document.getElementById('roleTag');
+    rt.textContent = found.role === 'editor' ? 'Editor' : 'Visualizador';
+    rt.className = 'role-tag ' + (found.role === 'editor' ? 'role-editor' : 'role-viewer');
+    applyRolePermissions();
+    initCharts();
+    renderAllBars();
+    renderTable('itu', DATA.itu.top10);
+    renderTable('itapeva', DATA.itapeva.top10);
+  } else {
+    document.getElementById('loginError').textContent = 'Usuário ou senha incorretos.';
+    setTimeout(()=>document.getElementById('loginError').textContent='', 3000);
+  }
+}
+
+function doLogout() {
+  currentUser = null;
+  document.getElementById('loginScreen').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('loginUser').value = '';
+  document.getElementById('loginPass').value = '';
+}
+
+function applyRolePermissions() {
+  if (currentUser.role === 'viewer') {
+    document.getElementById('viewerLockMsg').style.display = 'flex';
+    document.getElementById('uploadArea').style.display = 'none';
+  } else {
+    document.getElementById('viewerLockMsg').style.display = 'none';
+    document.getElementById('uploadArea').style.display = 'block';
+  }
+}
+
+// ═══════════════ TABS ═══════════════
+function switchTab(id) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + id).classList.add('active');
+  const tabs = ['geral','itu','itapeva','importar'];
+  document.querySelectorAll('.tab-btn')[tabs.indexOf(id)].classList.add('active');
+}
+
+// ═══════════════ HELPERS ═══════════════
+function fmt(n) { return 'R$ ' + Number(n).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function fmtM(n) { return n>=1000000?'R$'+(n/1000000).toFixed(2)+'M':n>=1000?'R$'+Math.round(n/1000)+'k':fmt(n); }
+
+// ═══════════════ DADOS ═══════════════
+const DATA = {
+  itu: {
+    top10: [
+      {desc:"Kit Motor C/Camisa S/Refri.Super.Om457la",estoque:12,preco:6549.26,valor:78591.12,curva:"D"},
+      {desc:"Mot Parc C/ Arv Man E Emb",estoque:1,preco:78164.62,valor:78164.62,curva:"C"},
+      {desc:"Oleo De Motor 15w-40 Mb 228.31",estoque:1570,preco:41.95,valor:65861.50,curva:"A"},
+      {desc:"Lu Injetor Para Common Rail",estoque:6,preco:10321.13,valor:61926.78,curva:"D"},
+      {desc:"Oleo P/ Cambio 75w85 - 235.16",estoque:107,preco:455.90,valor:48781.30,curva:"C"},
+      {desc:"Oleo Sintetico P Motor 5w30",estoque:742,preco:65.00,valor:48230.00,curva:"A"},
+      {desc:"Mobil Delvac 15w40 Super Defense",estoque:69,preco:697.32,valor:48115.08,curva:"A"},
+      {desc:"Oleo Mineral Aditivado 235.20",estoque:633,preco:61.03,valor:38631.99,curva:"A"},
+      {desc:"Cilindro De Mudanca",estoque:2,preco:17145.17,valor:34290.34,curva:"B"},
+      {desc:"Kit Pistao Do Motor Com Camisa",estoque:13,preco:2509.34,valor:32621.42,curva:"B"}
+    ],
+    curva: {
+      A:{skus:132,pecas:3210,valor:612000,itens:[{desc:"Oleo De Motor 15w-40",estoque:1570,preco:41.95,valor:65861},{desc:"Oleo Sintetico 5w30",estoque:742,preco:65,valor:48230},{desc:"Mobil Delvac 15w40",estoque:69,preco:697.32,valor:48115},{desc:"Oleo Mineral 235.20",estoque:633,preco:61.03,valor:38631},{desc:"Cj Elemento Do Filtro",estoque:18,preco:167.11,valor:3007}]},
+      B:{skus:219,pecas:2890,valor:480000,itens:[{desc:"Cilindro De Mudanca",estoque:2,preco:17145.17,valor:34290},{desc:"Kit Pistao Motor Com Camisa",estoque:13,preco:2509.34,valor:32621},{desc:"Correia Dentada",estoque:22,preco:580,valor:12760},{desc:"Pastilha Freio Dianteira",estoque:38,preco:290,valor:11020},{desc:"Filtro De Cabine",estoque:45,preco:320,valor:14400}]},
+      C:{skus:570,pecas:5100,valor:920000,itens:[{desc:"Mot Parc C/ Arv Man E Emb",estoque:1,preco:78164.62,valor:78164},{desc:"Oleo Cambio 75w85",estoque:107,preco:455.90,valor:48781},{desc:"Unidade Dosadora Ureia",estoque:2,preco:8288.02,valor:16576},{desc:"Valvula Dosadora Ureia",estoque:1,preco:5809.25,valor:5809},{desc:"Junta Tampa Cabecote",estoque:7,preco:748.32,valor:5238}]},
+      D:{skus:459,pecas:2803,valor:737000,itens:[{desc:"Kit Motor C/Camisa Om457la",estoque:12,preco:6549.26,valor:78591},{desc:"Lu Injetor Common Rail",estoque:6,preco:10321.13,valor:61926},{desc:"Valvula Dosadora Alliance",estoque:2,preco:4338.18,valor:8676},{desc:"Anel Vedacao Borracha",estoque:1,preco:343.30,valor:343},{desc:"Jun Tampa Cabecote Om926",estoque:1,preco:414.33,valor:414}]}
+    },
+    grupos:[
+      {nome:"MB Caminhões",val:1589625,pct:100,cor:"#3a6fa8",itens:[{desc:"Kit Motor C/Camisa Om457la",estoque:12,preco:6549.26,valor:78591},{desc:"Lu Injetor Common Rail",estoque:6,preco:10321.13,valor:61926},{desc:"Cilindro De Mudanca",estoque:2,preco:17145.17,valor:34290},{desc:"Kit Pistao Motor",estoque:13,preco:2509.34,valor:32621},{desc:"Valvula Dosadora Ureia",estoque:1,preco:5809.25,valor:5809}]},
+      {nome:"MB Vans",val:541585,pct:34,cor:"#4a6a8a",itens:[{desc:"Mot Parc C/ Arv Man E Emb",estoque:1,preco:78164.62,valor:78164},{desc:"Tampa Enchimento",estoque:7,preco:264.79,valor:1853},{desc:"Injetor De Um So Orificio",estoque:4,preco:471.94,valor:1887},{desc:"Elemento Filtrante Vans",estoque:6,preco:163.82,valor:982},{desc:"Elem. Filtrante",estoque:1,preco:115.73,valor:115}]},
+      {nome:"Comb. e Lubrif.",val:369742,pct:23,cor:"#5a7a8a",itens:[{desc:"Oleo De Motor 15w-40",estoque:1570,preco:41.95,valor:65861},{desc:"Oleo Cambio 75w85",estoque:107,preco:455.90,valor:48781},{desc:"Oleo Sintetico 5w30",estoque:742,preco:65,valor:48230},{desc:"Mobil Delvac 15w40",estoque:69,preco:697.32,valor:48115},{desc:"Oleo Mineral 235.20",estoque:633,preco:61.03,valor:38631}]},
+      {nome:"Alliance",val:166058,pct:10,cor:"#6a7a7a",itens:[{desc:"Valvula Dosadora Alliance",estoque:2,preco:4338.18,valor:8676},{desc:"Junta Carter Alliance",estoque:10,preco:188.37,valor:1883},{desc:"Filtro Combustivel Alliance",estoque:23,preco:144.06,valor:3313},{desc:"Filtro Ureia Alliance",estoque:3,preco:330.33,valor:990},{desc:"Jun Tampa Cabecote Alliance",estoque:1,preco:414.33,valor:414}]},
+      {nome:"Bhardal",val:42753,pct:2.7,cor:"#5a6a6a",itens:[{desc:"Filtro Ar Bhardal",estoque:35,preco:290,valor:10150},{desc:"Filtro Oleo Bhardal",estoque:40,preco:180,valor:7200},{desc:"Filtro Cabine Bhardal",estoque:22,preco:320,valor:7040},{desc:"Filtro Combustivel Bhardal",estoque:28,preco:210,valor:5880},{desc:"Kit Filtros Bhardal",estoque:12,preco:580,valor:6960}]},
+      {nome:"OF Novos",val:39519,pct:2.5,cor:"#4a5a5a",itens:[{desc:"Kit Revisao OF Novo",estoque:15,preco:890,valor:13350},{desc:"Fluido Arrefecimento",estoque:120,preco:85,valor:10200},{desc:"Oleo Transmissao OF",estoque:30,preco:290,valor:8700},{desc:"Vela Ignicao OF",estoque:48,preco:95,valor:4560},{desc:"Correia Poly V OF",estoque:18,preco:150,valor:2700}]}
+    ],
+    parados:{skus:206,pecas:890,valor:185000,itens:[{desc:"Anel Vedacao Borracha Bloco",estoque:1,preco:343.30,valor:343},{desc:"Junta De Borracha",estoque:1,preco:123.26,valor:123},{desc:"Elemento Filtrante Parado",estoque:1,preco:115.73,valor:115},{desc:"Valvula Dosadora Ureia Alliance",estoque:2,preco:4338.18,valor:8676},{desc:"Fecho Aco",estoque:10,preco:64.46,valor:644}]},
+    ativos:{skus:1174,pecas:13113,valor:2564772,itens:[{desc:"Oleo De Motor 15w-40",estoque:1570,preco:41.95,valor:65861},{desc:"Kit Motor C/Camisa Om457la",estoque:12,preco:6549.26,valor:78591},{desc:"Oleo Sintetico 5w30",estoque:742,preco:65,valor:48230},{desc:"Oleo Mineral 235.20",estoque:633,preco:61.03,valor:38631},{desc:"Cj Elemento Do Filtro",estoque:18,preco:167.11,valor:3007}]}
+  },
+  itapeva: {
+    top10: [
+      {desc:"Pneu Michelin 275/80r22.5 X Multi Z",estoque:45,preco:3164.00,valor:142380.00,curva:"A"},
+      {desc:"Pneu Michelin 275/80r22.5 X Multi D",estoque:40,preco:3509.00,valor:140360.00,curva:"A"},
+      {desc:"Pneu Michelin 295/80r22.5 X Multi Z+",estoque:40,preco:3313.00,valor:132520.00,curva:"A"},
+      {desc:"Pneu Bf Goodrich 295/80r22.5 Dr550",estoque:44,preco:2721.00,valor:119724.00,curva:"A"},
+      {desc:"Pneu Bf Goodrich 295/80r22.5 St250",estoque:42,preco:2431.00,valor:102102.00,curva:"A"},
+      {desc:"Pneu Michelin 295/80r22.5 X Multi Z2",estoque:31,preco:3218.29,valor:99766.99,curva:"B"},
+      {desc:"Turboalimentador",estoque:2,preco:49128.67,valor:98257.34,curva:"D"},
+      {desc:"Pneu Michelin 295/80r22.5 X Multi D2",estoque:26,preco:3740.00,valor:97240.00,curva:"A"},
+      {desc:"Pneu Michelin 295/80r22.5 X Works D",estoque:20,preco:3927.00,valor:78540.00,curva:"C"},
+      {desc:"Mot Parc C/ Arv Man E Emb",estoque:1,preco:78164.62,valor:78164.62,curva:"C"}
+    ],
+    curva: {
+      A:{skus:56,pecas:428,valor:1150000,itens:[{desc:"Pneu Michelin 275/80 X Multi Z",estoque:45,preco:3164,valor:142380},{desc:"Pneu Michelin 275/80 X Multi D",estoque:40,preco:3509,valor:140360},{desc:"Pneu Michelin 295/80 X Multi Z+",estoque:40,preco:3313,valor:132520},{desc:"Pneu BF Goodrich Dr550",estoque:44,preco:2721,valor:119724},{desc:"Pneu BF Goodrich St250",estoque:42,preco:2431,valor:102102}]},
+      B:{skus:57,pecas:680,valor:310000,itens:[{desc:"Pneu Michelin 295/80 X Multi Z2",estoque:31,preco:3218.29,valor:99766},{desc:"Anel Vedacao Borracha",estoque:3,preco:343.30,valor:1029},{desc:"Junta Tampa Cabecote",estoque:10,preco:748.32,valor:7483},{desc:"Correia Dentada",estoque:18,preco:620,valor:11160},{desc:"Filtro Combustivel",estoque:25,preco:144,valor:3600}]},
+      C:{skus:296,pecas:3800,valor:980000,itens:[{desc:"Pneu Michelin 295/80 X Works D",estoque:20,preco:3927,valor:78540},{desc:"Mot Parc C/ Arv Man E Emb",estoque:1,preco:78164.62,valor:78164},{desc:"Oleo Cambio Itapeva",estoque:85,preco:455.90,valor:38751},{desc:"Junta Motor",estoque:12,preco:748.32,valor:8979},{desc:"Filtro Ar Caminhao",estoque:30,preco:290,valor:8700}]},
+      D:{skus:297,pecas:2823,valor:925000,itens:[{desc:"Turboalimentador",estoque:2,preco:49128.67,valor:98257},{desc:"Lu Injetor Common Rail",estoque:4,preco:10321.13,valor:41284},{desc:"Kit Motor Om457",estoque:5,preco:6549.26,valor:32746},{desc:"Valvula Dosadora Ureia",estoque:3,preco:4338.18,valor:13014},{desc:"Cilindro Mudanca",estoque:1,preco:17145.17,valor:17145}]}
+    },
+    grupos:[
+      {nome:"Pneus e Câmaras",val:1384994,pct:100,cor:"#2a7a4a",itens:[{desc:"Pneu Michelin 275/80 X Multi Z",estoque:45,preco:3164,valor:142380},{desc:"Pneu Michelin 275/80 X Multi D",estoque:40,preco:3509,valor:140360},{desc:"Pneu Michelin 295/80 X Multi Z+",estoque:40,preco:3313,valor:132520},{desc:"Pneu BF Goodrich Dr550",estoque:44,preco:2721,valor:119724},{desc:"Pneu BF Goodrich St250",estoque:42,preco:2431,valor:102102}]},
+      {nome:"MB Caminhões",val:1169971,pct:84,cor:"#3a6050",itens:[{desc:"Turboalimentador",estoque:2,preco:49128.67,valor:98257},{desc:"Mot Parc C/ Arv Man E Emb",estoque:1,preco:78164.62,valor:78164},{desc:"Lu Injetor Common Rail",estoque:4,preco:10321.13,valor:41284},{desc:"Kit Motor Om457",estoque:5,preco:6549.26,valor:32746},{desc:"Valvula Dosadora Ureia",estoque:3,preco:5809.25,valor:17427}]},
+      {nome:"MB Vans",val:413581,pct:30,cor:"#4a7060",itens:[{desc:"Injetor Vans",estoque:3,preco:10321.13,valor:30963},{desc:"Tampa Enchimento",estoque:12,preco:264.79,valor:3177},{desc:"Junta Tampa Cabecote Vans",estoque:10,preco:748.32,valor:7483},{desc:"Elemento Filtrante Vans",estoque:15,preco:163.82,valor:2457},{desc:"Cj Elemento Filtro",estoque:20,preco:167.11,valor:3342}]},
+      {nome:"Comb. e Lubrif.",val:230489,pct:17,cor:"#5a7060",itens:[{desc:"Oleo Motor 15w-40",estoque:850,preco:41.95,valor:35657},{desc:"Oleo Sintetico 5w30",estoque:380,preco:65,valor:24700},{desc:"Oleo Cambio 75w85",estoque:85,preco:455.90,valor:38751},{desc:"Oleo Mineral 235.20",estoque:280,preco:61.03,valor:17088},{desc:"Mobil Delvac 15w40",estoque:35,preco:697.32,valor:24406}]},
+      {nome:"Alliance",val:82271,pct:6,cor:"#5a6050",itens:[{desc:"Valvula Dosadora Alliance",estoque:3,preco:4338.18,valor:13014},{desc:"Junta Carter Alliance",estoque:8,preco:188.37,valor:1506},{desc:"Filtro Combustivel Alliance",estoque:15,preco:144.06,valor:2160},{desc:"Filtro Ureia Alliance",estoque:5,preco:330.33,valor:1651},{desc:"Jun Tampa Cabecote Alliance",estoque:2,preco:414.33,valor:828}]},
+      {nome:"Bhardal",val:44303,pct:3.2,cor:"#4a5040",itens:[{desc:"Filtro Ar Bhardal",estoque:48,preco:290,valor:13920},{desc:"Filtro Oleo Bhardal",estoque:52,preco:180,valor:9360},{desc:"Filtro Cabine Bhardal",estoque:30,preco:320,valor:9600},{desc:"Kit Filtros Bhardal",estoque:8,preco:580,valor:4640},{desc:"Filtro Combustivel Bhardal",estoque:32,preco:210,valor:6720}]}
+    ],
+    parados:{skus:134,pecas:560,valor:125000,itens:[{desc:"Lu Conexao Parada",estoque:1,preco:661.15,valor:661},{desc:"Junta Borracha Parada",estoque:1,preco:154.61,valor:154},{desc:"Pneu Michelin Works D",estoque:2,preco:3927,valor:7854},{desc:"Turboalimentador Parado",estoque:1,preco:49128.67,valor:49128},{desc:"Valvula Dosadora Parada",estoque:2,preco:4338.18,valor:8676}]},
+    ativos:{skus:573,pecas:7171,valor:3240856,itens:[{desc:"Pneu Michelin 275/80 X Multi Z",estoque:45,preco:3164,valor:142380},{desc:"Pneu Michelin 275/80 X Multi D",estoque:40,preco:3509,valor:140360},{desc:"Pneu Michelin 295/80 X Multi Z+",estoque:40,preco:3313,valor:132520},{desc:"Pneu BF Goodrich Dr550",estoque:44,preco:2721,valor:119724},{desc:"Oleo Motor 15w-40",estoque:850,preco:41.95,valor:35657}]}
+  }
+};
+
+// ═══════════════ RENDER ═══════════════
+function renderBars(containerId, grupos, unit) {
+  document.getElementById(containerId).innerHTML = grupos.map(g => `
+    <div class="bar-row" onclick="openModal('${unit}','grupo','${g.nome}')">
+      <span class="bar-label">${g.nome}</span>
+      <div class="bar-track"><div class="bar-fill" style="width:${g.pct}%;background:${g.cor};"></div></div>
+      <span class="bar-val">${fmtM(g.val)}</span>
+    </div>`).join('');
+}
+
+function renderTable(unit, data) {
+  document.getElementById(unit+'TableBody').innerHTML = data.map((r,i) => `
+    <tr>
+      <td style="color:var(--text3)">${i+1}</td>
+      <td>${r.desc}</td>
+      <td><span class="curva-badge curva-${r.curva}">${r.curva}</span></td>
+      <td style="text-align:right">${r.estoque.toLocaleString('pt-BR')}</td>
+      <td style="text-align:right">${fmt(r.preco)}</td>
+      <td style="text-align:right;font-weight:600;color:var(--silver2);">${fmt(r.valor)}</td>
+    </tr>`).join('');
+}
+
+function filterTable(unit, q) {
+  renderTable(unit, DATA[unit].top10.filter(r => r.desc.toLowerCase().includes(q.toLowerCase())));
+}
+
+function renderAllBars() {
+  renderBars('ituBars', DATA.itu.grupos, 'itu');
+  renderBars('itapevaBars', DATA.itapeva.grupos, 'itapeva');
+
+  const geralGrupos = [
+    {nome:"MB Caminhões",itu:1589625,itapeva:1169971},
+    {nome:"MB Vans",itu:541585,itapeva:413581},
+    {nome:"Comb./Lubrif.",itu:369742,itapeva:230489},
+    {nome:"Pneus",itu:0,itapeva:1384994},
+    {nome:"Alliance",itu:166058,itapeva:82271},
+    {nome:"Bhardal",itu:42753,itapeva:44303}
+  ];
+  const maxG = Math.max(...geralGrupos.map(g=>Math.max(g.itu,g.itapeva)));
+  document.getElementById('geralBars').innerHTML = geralGrupos.map(g=>`
+    <div style="margin-bottom:10px;">
+      <div style="font-size:11px;color:var(--text2);margin-bottom:3px;font-weight:500;">${g.nome}</div>
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
+        <span style="font-size:9px;color:#6aaeed;width:30px;">Itu</span>
+        <div style="flex:1;height:9px;background:var(--dark3);border-radius:3px;overflow:hidden;">
+          <div style="width:${g.itu?Math.round(g.itu/maxG*100):0}%;height:100%;background:#2a5f8a;border-radius:3px;"></div>
+        </div>
+        <span style="font-size:9px;color:var(--text3);width:55px;text-align:right;">${fmtM(g.itu)}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <span style="font-size:9px;color:#5cb86c;width:30px;">Itap</span>
+        <div style="flex:1;height:9px;background:var(--dark3);border-radius:3px;overflow:hidden;">
+          <div style="width:${Math.round(g.itapeva/maxG*100)}%;height:100%;background:#2a6a40;border-radius:3px;"></div>
+        </div>
+        <span style="font-size:9px;color:var(--text3);width:55px;text-align:right;">${fmtM(g.itapeva)}</span>
+      </div>
+    </div>`).join('');
+}
+
+// ═══════════════ CHARTS ═══════════════
+function makeDonut(id, data, colors, unit) {
+  return new Chart(document.getElementById(id), {
+    type:'doughnut',
+    data:{ labels:data.map(d=>d.l), datasets:[{data:data.map(d=>d.v), backgroundColor:colors, borderWidth:0, hoverOffset:8}] },
+    options:{
+      responsive:true, maintainAspectRatio:false, cutout:'62%',
+      plugins:{ legend:{display:false}, tooltip:{callbacks:{label:ctx=>` ${ctx.label}: ${ctx.raw} SKUs`}} },
+      onClick:(e,els)=>{ if(els.length) openModal(unit,'curva',data[els[0].index].l); }
+    }
+  });
+}
+
+function initCharts() {
+  makeDonut('geralCurvaChart',[{l:'A',v:188},{l:'B',v:276},{l:'C',v:866},{l:'D',v:756}],['#4a9e5c','#378ADD','#d4910a','#c0392b'],'itu');
+  makeDonut('ituCurvaChart',[{l:'A',v:132},{l:'B',v:219},{l:'C',v:570},{l:'D',v:459}],['#4a9e5c','#378ADD','#d4910a','#c0392b'],'itu');
+  makeDonut('itapevaCurvaChart',[{l:'A',v:56},{l:'B',v:57},{l:'C',v:296},{l:'D',v:297}],['#4a9e5c','#378ADD','#d4910a','#c0392b'],'itapeva');
+}
+
+// ═══════════════ MODAL ═══════════════
+function openModal(unit, type, key) {
+  let d, title, badgeText, badgeStyle;
+  const unitLabel = unit==='itu'?'Itu':'Itapeva';
+
+  if (type==='curva') {
+    d = DATA[unit].curva[key];
+    const styles={A:'background:rgba(74,158,92,0.2);color:#5cb86c;',B:'background:rgba(55,138,221,0.2);color:#6aaeed;',C:'background:rgba(212,145,10,0.2);color:#e0a82a;',D:'background:rgba(192,57,43,0.2);color:#e05345;'};
+    title=`Curva ${key} — ${unitLabel}`; badgeText=`Curva ${key}`; badgeStyle=styles[key];
+  } else if (type==='grupo') {
+    const g = DATA[unit].grupos.find(x=>x.nome===key);
+    d={skus:Math.round(g.val/5000),pecas:Math.round(g.val/400),valor:g.val,itens:g.itens};
+    title=`${key} — ${unitLabel}`; badgeText='Grupo'; badgeStyle='background:rgba(192,192,192,0.1);color:var(--silver);';
+  } else if (type==='parados') {
+    d=DATA[unit].parados; title=`Itens Parados — ${unitLabel}`;
+    badgeText='Atenção'; badgeStyle='background:rgba(192,57,43,0.2);color:#e05345;';
+  } else if (type==='ativos') {
+    d=DATA[unit].ativos; title=`Itens Ativos — ${unitLabel}`;
+    badgeText='Ativos'; badgeStyle='background:rgba(74,158,92,0.2);color:#5cb86c;';
+  } else {
+    d={skus:unit==='itu'?1380:707,pecas:unit==='itu'?14003:7731,valor:unit==='itu'?2749772:3365856,itens:DATA[unit].top10};
+    title=`Visão Geral — ${unitLabel}`; badgeText='Todos'; badgeStyle='background:rgba(192,192,192,0.1);color:var(--silver);';
+  }
+
+  document.getElementById('modalTitle').textContent=title;
+  const badge=document.getElementById('modalBadge');
+  badge.textContent=badgeText; badge.style.cssText=badgeStyle;
+
+  document.getElementById('modalKpis').innerHTML=`
+    <div class="modal-kpi"><div class="modal-kpi-label">SKUs</div><div class="modal-kpi-val">${d.skus.toLocaleString('pt-BR')}</div></div>
+    <div class="modal-kpi"><div class="modal-kpi-label">Unidades</div><div class="modal-kpi-val">${d.pecas.toLocaleString('pt-BR')}</div></div>
+    <div class="modal-kpi"><div class="modal-kpi-label">Valor Total</div><div class="modal-kpi-val" style="font-size:16px;">${fmtM(d.valor)}</div></div>`;
+
+  document.getElementById('modalThead').innerHTML='<th>#</th><th>Descrição</th><th style="text-align:right">Qtd.</th><th style="text-align:right">Preço</th><th style="text-align:right">Valor</th>';
+  document.getElementById('modalTbody').innerHTML=d.itens.map((r,i)=>`
+    <tr>
+      <td style="color:var(--text3)">${i+1}</td><td>${r.desc}</td>
+      <td style="text-align:right">${r.estoque.toLocaleString('pt-BR')}</td>
+      <td style="text-align:right">${fmt(r.preco)}</td>
+      <td style="text-align:right;font-weight:600;color:var(--silver2);">${fmt(r.valor)}</td>
+    </tr>`).join('');
+
+  document.getElementById('modalOverlay').classList.add('active');
+}
+
+function closeModal() { document.getElementById('modalOverlay').classList.remove('active'); }
+function closeModalOutside(e) { if(e.target===document.getElementById('modalOverlay')) closeModal(); }
+
+// ═══════════════ UPLOAD ═══════════════
+function setUnidade(u) {
+  selectedUnit = u;
+  document.getElementById('btnUnidadeItu').style.background = u==='itu'?'rgba(55,138,221,0.2)':'var(--card)';
+  document.getElementById('btnUnidadeItu').style.borderColor = u==='itu'?'rgba(55,138,221,0.5)':'var(--border)';
+  document.getElementById('btnUnidadeItu').style.color = u==='itu'?'#6aaeed':'var(--text3)';
+  document.getElementById('btnUnidadeItapeva').style.background = u==='itapeva'?'rgba(74,158,92,0.2)':'var(--card)';
+  document.getElementById('btnUnidadeItapeva').style.borderColor = u==='itapeva'?'rgba(74,158,92,0.5)':'var(--border)';
+  document.getElementById('btnUnidadeItapeva').style.color = u==='itapeva'?'#5cb86c':'var(--text3)';
+}
+
+function handleFileUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const result = document.getElementById('uploadResult');
+  result.style.display = 'block';
+  result.style.color = '#e0a82a';
+  result.style.borderColor = 'var(--amber)';
+  result.textContent = `Lendo arquivo: ${file.name}...`;
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const wb = XLSX.read(data, {type:'array'});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws);
+      const skus = rows.length;
+      const now = new Date().toLocaleDateString('pt-BR') + ' — ' + new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+      const unitLabel = selectedUnit === 'itu' ? 'Itu' : 'Itapeva';
+      const badgeClass = selectedUnit === 'itu' ? 'badge-itu' : 'badge-itapeva';
+
+      result.style.color = '#5cb86c';
+      result.style.borderColor = 'var(--green)';
+      result.textContent = `✓ ${file.name} importado com sucesso — ${skus.toLocaleString('pt-BR')} SKUs encontrados para ${unitLabel}.`;
+
+      const tbody = document.getElementById('importHistory');
+      const newRow = document.createElement('tr');
+      newRow.innerHTML = `<td>${now}</td><td><span class="unit-badge ${badgeClass}" style="font-size:10px;">${unitLabel}</span></td><td>${file.name}</td><td>${currentUser.name}</td><td>${skus.toLocaleString('pt-BR')}</td><td><span style="color:#5cb86c;font-size:11px;">✓ Importado</span></td>`;
+      tbody.insertBefore(newRow, tbody.firstChild);
+    } catch(err) {
+      result.style.color = '#e05345';
+      result.style.borderColor = 'var(--red)';
+      result.textContent = 'Erro ao ler o arquivo. Verifique o formato (.xlsx, .xls, .csv).';
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// Drag and drop
+const zone = document.getElementById('uploadZone');
+if(zone){
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragging'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('dragging'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault(); zone.classList.remove('dragging');
+    const file = e.dataTransfer.files[0];
+    if(file) { document.getElementById('fileInput').files = e.dataTransfer.files; handleFileUpload({target:{files:[file]}}); }
+  });
+}
+</script>
+</body>
+</html>

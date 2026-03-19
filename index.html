@@ -826,8 +826,11 @@ function renderAllBars() {
 }
 
 // ═══════════════ CHARTS ═══════════════
+const CHART_INSTANCES = {};
+
 function makeDonut(id, data, colors, unit) {
-  return new Chart(document.getElementById(id), {
+  if (CHART_INSTANCES[id]) { CHART_INSTANCES[id].destroy(); }
+  CHART_INSTANCES[id] = new Chart(document.getElementById(id), {
     type:'doughnut',
     data:{ labels:data.map(d=>d.l), datasets:[{data:data.map(d=>d.v), backgroundColor:colors, borderWidth:0, hoverOffset:8}] },
     options:{
@@ -836,12 +839,263 @@ function makeDonut(id, data, colors, unit) {
       onClick:(e,els)=>{ if(els.length) openModal(unit,'curva',data[els[0].index].l); }
     }
   });
+  return CHART_INSTANCES[id];
 }
 
 function initCharts() {
-  makeDonut('geralCurvaChart',[{l:'A',v:188},{l:'B',v:276},{l:'C',v:866},{l:'D',v:756}],['#4a9e5c','#378ADD','#d4910a','#c0392b'],'itu');
-  makeDonut('ituCurvaChart',[{l:'A',v:132},{l:'B',v:219},{l:'C',v:570},{l:'D',v:459}],['#4a9e5c','#378ADD','#d4910a','#c0392b'],'itu');
-  makeDonut('itapevaCurvaChart',[{l:'A',v:56},{l:'B',v:57},{l:'C',v:296},{l:'D',v:297}],['#4a9e5c','#378ADD','#d4910a','#c0392b'],'itapeva');
+  const itu = DATA.itu, itapeva = DATA.itapeva;
+  const ituCurva = itu.curvaCount || {A:132,B:219,C:570,D:459};
+  const itpCurva = itapeva.curvaCount || {A:56,B:57,C:296,D:297};
+  const geralCurva = {
+    A: (ituCurva.A||0)+(itpCurva.A||0),
+    B: (ituCurva.B||0)+(itpCurva.B||0),
+    C: (ituCurva.C||0)+(itpCurva.C||0),
+    D: (ituCurva.D||0)+(itpCurva.D||0)
+  };
+  const COLORS = ['#4a9e5c','#378ADD','#d4910a','#c0392b'];
+  makeDonut('geralCurvaChart',[{l:'A',v:geralCurva.A},{l:'B',v:geralCurva.B},{l:'C',v:geralCurva.C},{l:'D',v:geralCurva.D}],COLORS,'itu');
+  makeDonut('ituCurvaChart',[{l:'A',v:ituCurva.A},{l:'B',v:ituCurva.B},{l:'C',v:ituCurva.C},{l:'D',v:ituCurva.D}],COLORS,'itu');
+  makeDonut('itapevaCurvaChart',[{l:'A',v:itpCurva.A},{l:'B',v:itpCurva.B},{l:'C',v:itpCurva.C},{l:'D',v:itpCurva.D}],COLORS,'itapeva');
+}
+
+// ═══════════════ PROCESSAR PLANILHA ═══════════════
+function processSheetRows(rows) {
+  // Detecta colunas flexivelmente (case-insensitive, ignora acentos)
+  function findCol(row, candidates) {
+    const keys = Object.keys(row);
+    for (const c of candidates) {
+      const found = keys.find(k => k.toLowerCase().replace(/[^a-z0-9]/g,'').includes(c.toLowerCase().replace(/[^a-z0-9]/g,'')));
+      if (found) return found;
+    }
+    return null;
+  }
+
+  if (!rows.length) return null;
+  const sample = rows[0];
+  const colDesc   = findCol(sample, ['Descrição','Descricao','descricao','desc','Descrição']);
+  const colEst    = findCol(sample, ['Estoque','estoque','Qty','qty','Quantidade']);
+  const colPreco  = findCol(sample, ['Preço Venda','preco venda','PrecoVenda','Preco','preco','Price']);
+  const colCusto  = findCol(sample, ['Custo Fornecedor','custo fornecedor','CustoFornecedor','Custo','custo','Cost']);
+  const colCurva  = findCol(sample, ['Curva','curva','Curve']);
+  const colGrupo  = findCol(sample, ['Grupo','grupo','Group','Categoria']);
+  const colMarca  = findCol(sample, ['Marca','marca','Brand']);
+  const colUVenda = findCol(sample, ['Última Venda','Ultima Venda','UltimaVenda','ultima venda']);
+  const colCodigo = findCol(sample, ['Código','Codigo','codigo','Code','SKU','sku']);
+
+  const parsed = rows.map(r => {
+    const preco  = parseFloat(String(r[colPreco]||'0').replace(/[^0-9.,]/g,'').replace(',','.')) || 0;
+    const custo  = parseFloat(String(r[colCusto]||'0').replace(/[^0-9.,]/g,'').replace(',','.')) || 0;
+    const est    = parseFloat(String(r[colEst]||'0').replace(/[^0-9.,]/g,'').replace(',','.')) || 0;
+    const curva  = String(r[colCurva]||'').trim().toUpperCase() || 'D';
+    const grupo  = colGrupo ? String(r[colGrupo]||'').split('/').pop().split('[')[0].trim() : 'Geral';
+    const marca  = colMarca ? String(r[colMarca]||'').split('[')[0].trim() : 'Outros';
+    const desc   = colDesc  ? String(r[colDesc]||'') : '';
+    const uvenda = colUVenda ? r[colUVenda] : null;
+    const codigo = colCodigo ? String(r[colCodigo]||'') : '';
+    return { desc, codigo, est, preco, custo, curva, grupo, marca, uvenda, valor: preco * est };
+  }).filter(r => r.est > 0 || r.preco > 0);
+
+  // Agrupa por curva
+  const curvaCount = {A:0,B:0,C:0,D:0};
+  parsed.forEach(r => { if (curvaCount[r.curva] !== undefined) curvaCount[r.curva]++; else curvaCount['D']++; });
+
+  // Agrupa por grupo
+  const grupoMap = {};
+  parsed.forEach(r => {
+    if (!grupoMap[r.grupo]) grupoMap[r.grupo] = {est:0, valor:0};
+    grupoMap[r.grupo].est   += r.est;
+    grupoMap[r.grupo].valor += r.valor;
+  });
+  const grupos = Object.entries(grupoMap)
+    .sort((a,b) => b[1].valor - a[1].valor)
+    .slice(0, 6)
+    .map(([nome, v], i) => {
+      const cors = ['#3a6fa8','#4a6a8a','#5a7a8a','#6a7a7a','#5a6a6a','#4a5a5a'];
+      return { nome, val: v.valor, pct: 0, cor: cors[i], itens: [] };
+    });
+  if (grupos.length) {
+    const maxVal = grupos[0].val;
+    grupos.forEach(g => g.pct = maxVal > 0 ? Math.round(g.val / maxVal * 100) : 0);
+  }
+
+  // Top 10 por valor
+  const top10 = [...parsed].sort((a,b) => b.valor - a.valor).slice(0,10).map(r => ({
+    desc: r.desc.substring(0,50),
+    estoque: Math.round(r.est),
+    preco: r.preco,
+    valor: r.valor,
+    curva: ['A','B','C','D'].includes(r.curva) ? r.curva : 'D'
+  }));
+
+  // Totais
+  const totalSkus   = parsed.length;
+  const totalPecas  = Math.round(parsed.reduce((s,r) => s + r.est, 0));
+  const valorTotal  = parsed.reduce((s,r) => s + r.valor, 0);
+  const custoTotal  = parsed.reduce((s,r) => s + r.custo * r.est, 0);
+  const margem      = valorTotal > 0 ? ((valorTotal - custoTotal) / valorTotal * 100).toFixed(1) : 0;
+  const semVenda    = parsed.filter(r => !r.uvenda || r.uvenda === '' || r.uvenda === 'nan').length;
+  const comVenda    = totalSkus - semVenda;
+
+  // Drill data por curva
+  const curvaData = {};
+  ['A','B','C','D'].forEach(c => {
+    const itens = parsed.filter(r => r.curva === c).sort((a,b) => b.valor - a.valor).slice(0,5);
+    curvaData[c] = {
+      skus: curvaCount[c],
+      pecas: Math.round(parsed.filter(r => r.curva === c).reduce((s,r) => s + r.est, 0)),
+      valor: parsed.filter(r => r.curva === c).reduce((s,r) => s + r.valor, 0),
+      itens: itens.map(r => ({ desc: r.desc.substring(0,45), estoque: Math.round(r.est), preco: r.preco, valor: r.valor }))
+    };
+  });
+
+  // Drill data por grupo
+  const grupoFull = {};
+  grupos.forEach(g => {
+    const itens = parsed.filter(r => r.grupo === g.nome).sort((a,b) => b.valor - a.valor).slice(0,5);
+    grupoFull[g.nome] = {
+      ...g,
+      skus: parsed.filter(r => r.grupo === g.nome).length,
+      pecas: Math.round(parsed.filter(r => r.grupo === g.nome).reduce((s,r) => s + r.est, 0)),
+      itens: itens.map(r => ({ desc: r.desc.substring(0,45), estoque: Math.round(r.est), preco: r.preco, valor: r.valor }))
+    };
+  });
+
+  const paradosItens = parsed.filter(r => !r.uvenda || r.uvenda === '' || r.uvenda === 'nan')
+    .sort((a,b) => b.valor - a.valor).slice(0,5)
+    .map(r => ({ desc: r.desc.substring(0,45), estoque: Math.round(r.est), preco: r.preco, valor: r.valor }));
+
+  const ativosItens = parsed.filter(r => r.uvenda && r.uvenda !== '' && r.uvenda !== 'nan')
+    .sort((a,b) => b.valor - a.valor).slice(0,5)
+    .map(r => ({ desc: r.desc.substring(0,45), estoque: Math.round(r.est), preco: r.preco, valor: r.valor }));
+
+  return {
+    top10, grupos: grupos.map(g => ({...g, itens: grupoFull[g.nome]?.itens || []})),
+    curvaCount, curvaData,
+    totalSkus, totalPecas, valorTotal, custoTotal, margem,
+    semVenda, comVenda,
+    parados: { skus: semVenda, pecas: 0, valor: parsed.filter(r => !r.uvenda||r.uvenda==='').reduce((s,r)=>s+r.valor,0), itens: paradosItens },
+    ativos:  { skus: comVenda, pecas: 0, valor: parsed.filter(r => r.uvenda&&r.uvenda!=='').reduce((s,r)=>s+r.valor,0), itens: ativosItens }
+  };
+}
+
+// ═══════════════ ATUALIZAR DASHBOARD ═══════════════
+function updateDashboard(unit, processed) {
+  // Atualiza DATA
+  DATA[unit].top10       = processed.top10;
+  DATA[unit].grupos      = processed.grupos;
+  DATA[unit].curvaCount  = processed.curvaCount;
+  DATA[unit].curva       = processed.curvaData;
+  DATA[unit].parados     = processed.parados;
+  DATA[unit].ativos      = processed.ativos;
+
+  const fmtVal = v => v >= 1e6 ? `R$ ${(v/1e6).toFixed(2)}M` : v >= 1e3 ? `R$ ${Math.round(v/1e3)}k` : fmt(v);
+  const unitLabel = unit === 'itu' ? 'Itu' : 'Itapeva';
+
+  // ── Métricas do painel da unidade ──
+  const skuCard = document.querySelector(`#tab-${unit} .metric-card:nth-child(1) .metric-value`);
+  const pecCard = document.querySelector(`#tab-${unit} .metric-card:nth-child(2) .metric-value`);
+  const valCard = document.querySelector(`#tab-${unit} .metric-card:nth-child(3) .metric-value`);
+  const parCard = document.querySelector(`#tab-${unit} .metric-card:nth-child(4) .metric-value`);
+  const valSub  = document.querySelector(`#tab-${unit} .metric-card:nth-child(3) .metric-sub`);
+  const parSub  = document.querySelector(`#tab-${unit} .metric-card:nth-child(4) .metric-sub`);
+  if (skuCard) skuCard.textContent = processed.totalSkus.toLocaleString('pt-BR');
+  if (pecCard) pecCard.textContent = processed.totalPecas.toLocaleString('pt-BR');
+  if (valCard) valCard.textContent = fmtVal(processed.valorTotal);
+  if (parCard) parCard.textContent = processed.semVenda.toLocaleString('pt-BR');
+  if (valSub)  valSub.textContent  = `Margem: ${processed.margem}%`;
+  if (parSub)  parSub.textContent  = `itens parados (${Math.round(processed.semVenda/processed.totalSkus*100)}%)`;
+
+  // ── Gráficos ──
+  const cc = processed.curvaCount;
+  makeDonut(`${unit}CurvaChart`,
+    [{l:'A',v:cc.A},{l:'B',v:cc.B},{l:'C',v:cc.C},{l:'D',v:cc.D}],
+    ['#4a9e5c','#378ADD','#d4910a','#c0392b'], unit);
+
+  renderBars(`${unit}Bars`, processed.grupos, unit);
+  renderTable(unit, processed.top10);
+
+  // ── Atualiza legenda curva ──
+  const legendEl = document.querySelector(`#tab-${unit} .legend`);
+  if (legendEl) {
+    legendEl.querySelectorAll('.legend-item').forEach((el, i) => {
+      const key = ['A','B','C','D'][i];
+      el.onclick = () => openModal(unit,'curva',key);
+      const txt = el.querySelector('span:last-child') || el;
+      if (el.children.length > 1) el.children[1].textContent = `${key} — ${cc[key]}`;
+    });
+  }
+
+  // ── Atualiza visão geral ──
+  updateGeralView();
+}
+
+function updateGeralView() {
+  const itu = DATA.itu, itp = DATA.itapeva;
+
+  // Calcula totais consolidados dinamicamente
+  const ituSkus   = itu.totalSkus   || 1380;
+  const itpSkus   = itp.totalSkus   || 707;
+  const ituPecas  = itu.totalPecas  || 14003;
+  const itpPecas  = itp.totalPecas  || 7731;
+  const ituValor  = itu.valorTotal  || 2749772;
+  const itpValor  = itp.valorTotal  || 3365856;
+  const ituParad  = itu.semVenda    || 206;
+  const itpParad  = itp.semVenda    || 134;
+  const ituMarg   = itu.margem      || 57.2;
+  const itpMarg   = itp.margem      || 39.6;
+  const ituCusto  = itu.custoTotal  || 1176195;
+  const itpCusto  = itp.custoTotal  || 2032085;
+
+  const fmtVal = v => v >= 1e6 ? `R$ ${(v/1e6).toFixed(2)}M` : `R$ ${Math.round(v/1e3)}k`;
+
+  // Cards gerais
+  const g = document.getElementById('tab-geral');
+  if (g) {
+    const cards = g.querySelectorAll('.metric-card .metric-value');
+    if (cards[0]) cards[0].textContent = (ituSkus+itpSkus).toLocaleString('pt-BR');
+    if (cards[1]) cards[1].textContent = (ituPecas+itpPecas).toLocaleString('pt-BR');
+    if (cards[2]) cards[2].textContent = fmtVal(ituValor+itpValor);
+    if (cards[3]) cards[3].textContent = (ituParad+itpParad).toLocaleString('pt-BR');
+    const subs = g.querySelectorAll('.metric-card .metric-sub');
+    if (subs[0]) subs[0].textContent = `Itu ${ituSkus.toLocaleString('pt-BR')} + Itapeva ${itpSkus.toLocaleString('pt-BR')}`;
+    if (subs[1]) subs[1].textContent = `Itu ${ituPecas.toLocaleString('pt-BR')} + Itapeva ${itpPecas.toLocaleString('pt-BR')}`;
+    if (subs[2]) subs[2].textContent = `Itu ${fmtVal(ituValor)} + Itapeva ${fmtVal(itpValor)}`;
+    if (subs[3]) subs[3].textContent = `Itu ${ituParad} + Itapeva ${itpParad}`;
+  }
+
+  // Cards comparativos
+  const ituRows = document.querySelectorAll('.compare-grid .compare-card:nth-child(1) .compare-row-val');
+  if (ituRows.length >= 6) {
+    ituRows[0].textContent = ituSkus.toLocaleString('pt-BR');
+    ituRows[1].textContent = ituPecas.toLocaleString('pt-BR');
+    ituRows[2].textContent = fmtVal(ituValor);
+    ituRows[3].textContent = fmtVal(ituCusto);
+    ituRows[4].textContent = `${ituMarg}%`;
+    ituRows[4].style.color = '#5cb86c';
+    ituRows[5].textContent = `${ituParad} (${Math.round(ituParad/ituSkus*100)}%)`;
+    ituRows[5].style.color = '#e05345';
+  }
+  const itpRows = document.querySelectorAll('.compare-grid .compare-card:nth-child(2) .compare-row-val');
+  if (itpRows.length >= 6) {
+    itpRows[0].textContent = itpSkus.toLocaleString('pt-BR');
+    itpRows[1].textContent = itpPecas.toLocaleString('pt-BR');
+    itpRows[2].textContent = fmtVal(itpValor);
+    itpRows[3].textContent = fmtVal(itpCusto);
+    itpRows[4].textContent = `${itpMarg}%`;
+    itpRows[4].style.color = parseFloat(itpMarg) >= 50 ? '#5cb86c' : '#e0a82a';
+    itpRows[5].textContent = `${itpParad} (${Math.round(itpParad/itpSkus*100)}%)`;
+    itpRows[5].style.color = '#e05345';
+  }
+
+  // Curva geral atualizada
+  const ituCC = itu.curvaCount || {A:132,B:219,C:570,D:459};
+  const itpCC = itp.curvaCount || {A:56,B:57,C:296,D:297};
+  makeDonut('geralCurvaChart',[
+    {l:'A',v:(ituCC.A||0)+(itpCC.A||0)},
+    {l:'B',v:(ituCC.B||0)+(itpCC.B||0)},
+    {l:'C',v:(ituCC.C||0)+(itpCC.C||0)},
+    {l:'D',v:(ituCC.D||0)+(itpCC.D||0)}
+  ],['#4a9e5c','#378ADD','#d4910a','#c0392b'],'itu');
 }
 
 // ═══════════════ MODAL ═══════════════
@@ -910,7 +1164,7 @@ function handleFileUpload(event) {
   result.style.display = 'block';
   result.style.color = '#e0a82a';
   result.style.borderColor = 'var(--amber)';
-  result.textContent = `Lendo arquivo: ${file.name}...`;
+  result.textContent = `⏳ Lendo e processando: ${file.name}...`;
 
   const reader = new FileReader();
   reader.onload = function(e) {
@@ -919,23 +1173,48 @@ function handleFileUpload(event) {
       const wb = XLSX.read(data, {type:'array'});
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(ws);
-      const skus = rows.length;
-      const now = new Date().toLocaleDateString('pt-BR') + ' — ' + new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
-      const unitLabel = selectedUnit === 'itu' ? 'Itu' : 'Itapeva';
-      const badgeClass = selectedUnit === 'itu' ? 'badge-itu' : 'badge-itapeva';
 
+      if (!rows.length) throw new Error('Planilha vazia ou formato inválido.');
+
+      // Processa os dados
+      const processed = processSheetRows(rows);
+      if (!processed) throw new Error('Não foi possível identificar as colunas da planilha.');
+
+      // Detecta unidade automaticamente pelo conteúdo se possível
+      const unit = selectedUnit;
+      const unitLabel = unit === 'itu' ? 'Itu' : 'Itapeva';
+      const badgeClass = unit === 'itu' ? 'badge-itu' : 'badge-itapeva';
+
+      // Salva no DATA e atualiza todo o dashboard
+      DATA[unit].totalSkus  = processed.totalSkus;
+      DATA[unit].totalPecas = processed.totalPecas;
+      DATA[unit].valorTotal = processed.valorTotal;
+      DATA[unit].custoTotal = processed.custoTotal;
+      DATA[unit].margem     = processed.margem;
+      DATA[unit].semVenda   = processed.semVenda;
+      DATA[unit].comVenda   = processed.comVenda;
+
+      updateDashboard(unit, processed);
+
+      // Feedback
+      const now = new Date().toLocaleDateString('pt-BR') + ' — ' + new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
       result.style.color = '#5cb86c';
       result.style.borderColor = 'var(--green)';
-      result.textContent = `✓ ${file.name} importado com sucesso — ${skus.toLocaleString('pt-BR')} SKUs encontrados para ${unitLabel}.`;
+      result.innerHTML = `✓ <strong>${file.name}</strong> importado — <strong>${processed.totalSkus.toLocaleString('pt-BR')} SKUs</strong>, valor total <strong>R$ ${(processed.valorTotal/1e6).toFixed(2)}M</strong> para ${unitLabel}. Dashboard atualizado!`;
 
+      // Histórico
       const tbody = document.getElementById('importHistory');
       const newRow = document.createElement('tr');
-      newRow.innerHTML = `<td>${now}</td><td><span class="unit-badge ${badgeClass}" style="font-size:10px;">${unitLabel}</span></td><td>${file.name}</td><td>${currentUser.name}</td><td>${skus.toLocaleString('pt-BR')}</td><td><span style="color:#5cb86c;font-size:11px;">✓ Importado</span></td>`;
+      newRow.innerHTML = `<td>${now}</td><td><span class="unit-badge ${badgeClass}" style="font-size:10px;">${unitLabel}</span></td><td>${file.name}</td><td>${currentUser.name}</td><td>${processed.totalSkus.toLocaleString('pt-BR')}</td><td><span style="color:#5cb86c;font-size:11px;">✓ Atualizado</span></td>`;
       tbody.insertBefore(newRow, tbody.firstChild);
+
+      // Muda para a aba da unidade importada para mostrar os dados atualizados
+      setTimeout(() => switchTab(unit), 800);
+
     } catch(err) {
       result.style.color = '#e05345';
       result.style.borderColor = 'var(--red)';
-      result.textContent = 'Erro ao ler o arquivo. Verifique o formato (.xlsx, .xls, .csv).';
+      result.textContent = `Erro: ${err.message}`;
     }
   };
   reader.readAsArrayBuffer(file);

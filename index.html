@@ -1125,106 +1125,199 @@ function processFile(file){
 }
 
 function processFileFaturamento(ws, storeName, log){
-  const raw = XLSX.utils.sheet_to_json(ws, {header:1});
-  // Find header row
-  let headerIdx = 0;
-  for(let i=0;i<Math.min(raw.length,10);i++){
-    if(raw[i] && raw[i][0]==='Empresa' && raw[i][1]==='Filial'){headerIdx=i;break;}
-  }
-  const headers = raw[headerIdx];
-  const rows = raw.slice(headerIdx+1).filter(r=>r[1] && r[1]!=='Filial');
+  try {
+    const raw = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+    log.innerHTML += `📄 ${raw.length} linhas brutas lidas\n`;
 
-  const vendedoresPecas = ['Thiago Nunes','Thiago Miranda Dutra'];
-  const consultoresOficina = ['Edenilson belini','Gabriel Alves Jacomini','Mariana Moraes'];
-  const validNames = [...vendedoresPecas,...consultoresOficina];
+    // Find header row by searching for 'Empresa' + 'Filial' pattern
+    let headerIdx = -1;
+    for(let i=0;i<Math.min(raw.length,20);i++){
+      const row = raw[i]||[];
+      const joined = row.map(c=>String(c||'').trim().toLowerCase()).join('|');
+      if(joined.includes('empresa') && joined.includes('filial') && joined.includes('emiss')){
+        headerIdx = i;
+        break;
+      }
+    }
+    if(headerIdx===-1){
+      log.innerHTML += `❌ Cabeçalho não encontrado. Verifique se a planilha tem colunas: Empresa, Filial, Emissão, etc.\n`;
+      return;
+    }
 
-  const parsed = [];
-  rows.forEach(r=>{
-    const nome = r[37]||'';
-    if(!validNames.includes(nome)) return;
-    const canal = vendedoresPecas.includes(nome)?'Vendas Peças':'Oficina';
-    const detalhe = nome==='Thiago Nunes'?'Balcão':nome==='Thiago Miranda Dutra'?'Telepeças':'Consultor';
-    parsed.push({
-      DescGrupo:r[3]||'',Emissao:r[13]||'',CodItem:r[17]||'',DescItem:r[18]||'',
-      Qtde:parseFloat(r[19])||0, VlrLiquido:parseFloat(r[22])||0, Custo:parseFloat(r[26])||0,
-      Lucro:parseFloat(r[27])||0, PctLucro:parseFloat(r[28])||0,
-      NomeCliente:r[30]||'', Cidade:r[33]||'', NomeVendedor:nome, NrNF:r[14]||'',
-      Canal:canal, Detalhe:detalhe,
+    const headers = raw[headerIdx].map(h=>String(h||'').trim());
+    log.innerHTML += `✅ Cabeçalho encontrado na linha ${headerIdx+1}: ${headers.filter(h=>h).length} colunas\n`;
+
+    // Build column index map
+    function findCol(...names){
+      for(const name of names){
+        const nl = name.toLowerCase();
+        const idx = headers.findIndex(h=>h.toLowerCase().includes(nl));
+        if(idx>=0) return idx;
+      }
+      return -1;
+    }
+
+    const colMap = {
+      empresa: findCol('Empresa'),
+      filial: findCol('Filial'),
+      descGrupo: findCol('Descrição Grupo','Descri'),
+      emissao: findCol('Emissão','Emissao'),
+      nrNF: findCol('Nr NF'),
+      codItem: findCol('Cod. Item','Cod Item'),
+      descItem: findCol('Descrição','Descricao'),
+      qtde: findCol('Qtde'),
+      valorItem: findCol('Valor Item'),
+      vlrLiquido: findCol('Vlr Líquido','Vlr Liquido'),
+      custo: findCol('Custo'),
+      lucro: findCol('Lucro'),
+      pctLucro: findCol('% Lucro'),
+      nomeCliente: findCol('Nome Cliente'),
+      cidade: findCol('Cidade'),
+      nomeVendedor: findCol('Nome Vendedor'),
+    };
+
+    // Handle duplicate 'Descrição' columns (grupo vs item)
+    // descItem should be the second 'Descrição' column, after descGrupo
+    if(colMap.descGrupo>=0){
+      const afterGrupo = headers.findIndex((h,i)=>i>colMap.descGrupo+2 && h.toLowerCase().includes('descri'));
+      if(afterGrupo>=0) colMap.descItem = afterGrupo;
+    }
+    // codItem might collide with CodGrupo - find the one near 'Cod. Item'
+    const codItemIdx = headers.findIndex(h=>h.toLowerCase().includes('cod. item') || h.toLowerCase().includes('cod item'));
+    if(codItemIdx>=0) colMap.codItem = codItemIdx;
+
+    log.innerHTML += `🔍 Colunas mapeadas: vendedor=${colMap.nomeVendedor}, vlrLiq=${colMap.vlrLiquido}, custo=${colMap.custo}\n`;
+
+    if(colMap.nomeVendedor<0 || colMap.vlrLiquido<0){
+      log.innerHTML += `❌ Colunas essenciais não encontradas. Colunas disponíveis: ${headers.filter(h=>h).join(', ')}\n`;
+      return;
+    }
+
+    const dataRows = raw.slice(headerIdx+1);
+
+    const vendedoresPecas = ['Thiago Nunes','Thiago Miranda Dutra'];
+    const consultoresOficina = ['Edenilson belini','Gabriel Alves Jacomini','Mariana Moraes'];
+    const validNames = [...vendedoresPecas,...consultoresOficina];
+
+    const parsed = [];
+    let skipped = 0;
+    dataRows.forEach(r=>{
+      if(!r || !r.length) return;
+      const nome = String(r[colMap.nomeVendedor]||'').trim();
+      if(!nome || !validNames.includes(nome)){skipped++;return;}
+      const canal = vendedoresPecas.includes(nome)?'Vendas Peças':'Oficina';
+      const detalhe = nome==='Thiago Nunes'?'Balcão':nome==='Thiago Miranda Dutra'?'Telepeças':'Consultor';
+
+      const emissaoRaw = r[colMap.emissao]||'';
+      let emissao = String(emissaoRaw);
+      // Handle Excel date serial numbers
+      if(typeof emissaoRaw==='number'){
+        const d = new Date((emissaoRaw-25569)*86400000);
+        emissao = d.getDate()+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear();
+      }
+
+      parsed.push({
+        DescGrupo: String(r[colMap.descGrupo]||''),
+        Emissao: emissao,
+        CodItem: String(r[colMap.codItem]||''),
+        DescItem: String(r[colMap.descItem]||''),
+        Qtde: parseFloat(r[colMap.qtde])||0,
+        VlrLiquido: parseFloat(r[colMap.vlrLiquido])||0,
+        Custo: parseFloat(r[colMap.custo])||0,
+        Lucro: parseFloat(r[colMap.lucro])||0,
+        PctLucro: parseFloat(r[colMap.pctLucro])||0,
+        NomeCliente: String(r[colMap.nomeCliente]||''),
+        Cidade: String(r[colMap.cidade]||''),
+        NomeVendedor: nome,
+        NrNF: String(r[colMap.nrNF]||''),
+        Canal: canal, Detalhe: detalhe,
+      });
     });
-  });
 
-  // Build fat summary
-  let fat=0,cust=0,luc=0,qtd=0;
-  const diaMap={},grupoMap={},vendMap={},cliMap={},cidMap={},itemMap={},canalMap={};
-  const nfSet=new Set();
+    log.innerHTML += `✅ ${parsed.length} registros válidos (${skipped} descartados)\n`;
 
-  parsed.forEach(r=>{
-    fat+=r.VlrLiquido; cust+=r.Custo; luc+=r.Lucro; qtd+=r.Qtde;
-    nfSet.add(r.NrNF);
-    const dia = parseInt((r.Emissao||'').split('/')[0])||0;
-    if(dia){
-      if(!diaMap[dia]) diaMap[dia]={Dia:dia,faturamento:0,lucro:0,qtde:0,notas:0};
-      diaMap[dia].faturamento+=r.VlrLiquido; diaMap[dia].lucro+=r.Lucro; diaMap[dia].qtde+=r.Qtde;
+    if(!parsed.length){
+      log.innerHTML += `⚠ Nenhum registro encontrado para os vendedores válidos.\n`;
+      log.innerHTML += `💡 Vendedores esperados: ${validNames.join(', ')}\n`;
+      return;
     }
-    if(r.DescGrupo){
-      if(!grupoMap[r.DescGrupo]) grupoMap[r.DescGrupo]={DescGrupo:r.DescGrupo,faturamento:0,custo:0,lucro:0,qtde:0};
-      grupoMap[r.DescGrupo].faturamento+=r.VlrLiquido;grupoMap[r.DescGrupo].custo+=r.Custo;grupoMap[r.DescGrupo].lucro+=r.Lucro;grupoMap[r.DescGrupo].qtde+=r.Qtde;
-    }
-    if(!vendMap[r.NomeVendedor]) vendMap[r.NomeVendedor]={NomeVendedor:r.NomeVendedor,Canal:r.Canal,Detalhe:r.Detalhe,faturamento:0,lucro:0,qtde:0,notas:0};
-    vendMap[r.NomeVendedor].faturamento+=r.VlrLiquido;vendMap[r.NomeVendedor].lucro+=r.Lucro;vendMap[r.NomeVendedor].qtde+=r.Qtde;
-    if(!canalMap[r.Canal]) canalMap[r.Canal]={Canal:r.Canal,faturamento:0,custo:0,lucro:0,qtde:0,notas:0};
-    canalMap[r.Canal].faturamento+=r.VlrLiquido;canalMap[r.Canal].custo+=r.Custo;canalMap[r.Canal].lucro+=r.Lucro;canalMap[r.Canal].qtde+=r.Qtde;
-    if(r.NomeCliente){
-      if(!cliMap[r.NomeCliente]) cliMap[r.NomeCliente]={NomeCliente:r.NomeCliente,faturamento:0,lucro:0,qtde:0};
-      cliMap[r.NomeCliente].faturamento+=r.VlrLiquido;cliMap[r.NomeCliente].lucro+=r.Lucro;cliMap[r.NomeCliente].qtde+=r.Qtde;
-    }
-    if(r.Cidade){
-      if(!cidMap[r.Cidade]) cidMap[r.Cidade]={Cidade:r.Cidade,faturamento:0,qtde:0};
-      cidMap[r.Cidade].faturamento+=r.VlrLiquido;cidMap[r.Cidade].qtde+=r.Qtde;
-    }
-    const ik=r.CodItem||r.DescItem;
-    if(ik){
-      if(!itemMap[ik]) itemMap[ik]={CodItem:r.CodItem,DescItem:r.DescItem,faturamento:0,lucro:0,qtde:0};
-      itemMap[ik].faturamento+=r.VlrLiquido;itemMap[ik].lucro+=r.Lucro;itemMap[ik].qtde+=r.Qtde;
-    }
-  });
 
-  // Count notas per dia
-  const nfDia={};
-  parsed.forEach(r=>{const d=parseInt((r.Emissao||'').split('/')[0])||0;if(d){if(!nfDia[d])nfDia[d]=new Set();nfDia[d].add(r.NrNF);}});
-  Object.keys(diaMap).forEach(d=>{diaMap[d].notas=nfDia[d]?nfDia[d].size:0;});
-  // Count notas per vendedor
-  const nfVend={};
-  parsed.forEach(r=>{if(!nfVend[r.NomeVendedor])nfVend[r.NomeVendedor]=new Set();nfVend[r.NomeVendedor].add(r.NrNF);});
-  Object.keys(vendMap).forEach(v=>{vendMap[v].notas=nfVend[v]?nfVend[v].size:0;});
-  // Count notas per canal
-  const nfCanal={};
-  parsed.forEach(r=>{if(!nfCanal[r.Canal])nfCanal[r.Canal]=new Set();nfCanal[r.Canal].add(r.NrNF);});
-  Object.keys(canalMap).forEach(c=>{canalMap[c].notas=nfCanal[c]?nfCanal[c].size:0;});
+    // Build summary
+    let fat=0,cust=0,luc=0,qtd=0;
+    const diaMap={},grupoMap={},vendMap={},cliMap={},cidMap={},itemMap={},canalMap={};
+    const nfSet=new Set();
 
-  const nrNotas = nfSet.size;
-  const summary = {
-    faturamento:fat, custo:cust, lucro:luc,
-    margemMedia: fat>0?((luc/fat)*100):0,
-    qtdeVendida:Math.round(qtd), nrNotas:nrNotas,
-    ticketMedio: nrNotas>0?(fat/nrNotas):0,
-    nrClientes: Object.keys(cliMap).length,
-    diario: Object.values(diaMap).sort((a,b)=>a.Dia-b.Dia),
-    grupos: Object.values(grupoMap).sort((a,b)=>b.faturamento-a.faturamento),
-    vendedores: Object.values(vendMap).sort((a,b)=>b.faturamento-a.faturamento),
-    canais: Object.values(canalMap).sort((a,b)=>b.faturamento-a.faturamento),
-    topClientes: Object.values(cliMap).sort((a,b)=>b.faturamento-a.faturamento).slice(0,15),
-    topCidades: Object.values(cidMap).sort((a,b)=>b.faturamento-a.faturamento).slice(0,10),
-    topItens: Object.values(itemMap).sort((a,b)=>b.faturamento-a.faturamento).slice(0,10),
-  };
+    parsed.forEach(r=>{
+      fat+=r.VlrLiquido; cust+=r.Custo; luc+=r.Lucro; qtd+=r.Qtde;
+      nfSet.add(r.NrNF);
+      const dia = parseInt((r.Emissao||'').split('/')[0])||0;
+      if(dia){
+        if(!diaMap[dia]) diaMap[dia]={Dia:dia,faturamento:0,lucro:0,qtde:0,notas:0};
+        diaMap[dia].faturamento+=r.VlrLiquido; diaMap[dia].lucro+=r.Lucro; diaMap[dia].qtde+=r.Qtde;
+      }
+      if(r.DescGrupo){
+        if(!grupoMap[r.DescGrupo]) grupoMap[r.DescGrupo]={DescGrupo:r.DescGrupo,faturamento:0,custo:0,lucro:0,qtde:0};
+        grupoMap[r.DescGrupo].faturamento+=r.VlrLiquido;grupoMap[r.DescGrupo].custo+=r.Custo;grupoMap[r.DescGrupo].lucro+=r.Lucro;grupoMap[r.DescGrupo].qtde+=r.Qtde;
+      }
+      if(!vendMap[r.NomeVendedor]) vendMap[r.NomeVendedor]={NomeVendedor:r.NomeVendedor,Canal:r.Canal,Detalhe:r.Detalhe,faturamento:0,lucro:0,qtde:0,notas:0};
+      vendMap[r.NomeVendedor].faturamento+=r.VlrLiquido;vendMap[r.NomeVendedor].lucro+=r.Lucro;vendMap[r.NomeVendedor].qtde+=r.Qtde;
+      if(!canalMap[r.Canal]) canalMap[r.Canal]={Canal:r.Canal,faturamento:0,custo:0,lucro:0,qtde:0,notas:0};
+      canalMap[r.Canal].faturamento+=r.VlrLiquido;canalMap[r.Canal].custo+=r.Custo;canalMap[r.Canal].lucro+=r.Lucro;canalMap[r.Canal].qtde+=r.Qtde;
+      if(r.NomeCliente){
+        if(!cliMap[r.NomeCliente]) cliMap[r.NomeCliente]={NomeCliente:r.NomeCliente,faturamento:0,lucro:0,qtde:0};
+        cliMap[r.NomeCliente].faturamento+=r.VlrLiquido;cliMap[r.NomeCliente].lucro+=r.Lucro;cliMap[r.NomeCliente].qtde+=r.Qtde;
+      }
+      if(r.Cidade){
+        if(!cidMap[r.Cidade]) cidMap[r.Cidade]={Cidade:r.Cidade,faturamento:0,qtde:0};
+        cidMap[r.Cidade].faturamento+=r.VlrLiquido;cidMap[r.Cidade].qtde+=r.Qtde;
+      }
+      const ik=r.CodItem||r.DescItem;
+      if(ik){
+        if(!itemMap[ik]) itemMap[ik]={CodItem:r.CodItem,DescItem:r.DescItem,faturamento:0,lucro:0,qtde:0};
+        itemMap[ik].faturamento+=r.VlrLiquido;itemMap[ik].lucro+=r.Lucro;itemMap[ik].qtde+=r.Qtde;
+      }
+    });
 
-  FAT_DATA[storeName] = summary;
-  log.innerHTML += `✅ ${parsed.length} registros processados (vendedores válidos)\n`;
-  log.innerHTML += `✅ Faturamento: ${fmt(fat)} | Lucro: ${fmt(luc)}\n`;
-  log.innerHTML += `✅ Faturamento ${storeName} atualizado!\n`;
+    // Count notas per dimension
+    const nfDia={},nfVend={},nfCanal={};
+    parsed.forEach(r=>{
+      const d=parseInt((r.Emissao||'').split('/')[0])||0;
+      if(d){if(!nfDia[d])nfDia[d]=new Set();nfDia[d].add(r.NrNF);}
+      if(!nfVend[r.NomeVendedor])nfVend[r.NomeVendedor]=new Set();nfVend[r.NomeVendedor].add(r.NrNF);
+      if(!nfCanal[r.Canal])nfCanal[r.Canal]=new Set();nfCanal[r.Canal].add(r.NrNF);
+    });
+    Object.keys(diaMap).forEach(d=>{diaMap[d].notas=nfDia[d]?nfDia[d].size:0;});
+    Object.keys(vendMap).forEach(v=>{vendMap[v].notas=nfVend[v]?nfVend[v].size:0;});
+    Object.keys(canalMap).forEach(c=>{canalMap[c].notas=nfCanal[c]?nfCanal[c].size:0;});
 
-  buildFatPills();
-  renderFaturamento(storeName);
+    const nrNotas = nfSet.size;
+    const summary = {
+      faturamento:fat, custo:cust, lucro:luc,
+      margemMedia: fat>0?((luc/fat)*100):0,
+      qtdeVendida:Math.round(qtd), nrNotas:nrNotas,
+      ticketMedio: nrNotas>0?(fat/nrNotas):0,
+      nrClientes: Object.keys(cliMap).length,
+      diario: Object.values(diaMap).sort((a,b)=>a.Dia-b.Dia),
+      grupos: Object.values(grupoMap).sort((a,b)=>b.faturamento-a.faturamento),
+      vendedores: Object.values(vendMap).sort((a,b)=>b.faturamento-a.faturamento),
+      canais: Object.values(canalMap).sort((a,b)=>b.faturamento-a.faturamento),
+      topClientes: Object.values(cliMap).sort((a,b)=>b.faturamento-a.faturamento).slice(0,15),
+      topCidades: Object.values(cidMap).sort((a,b)=>b.faturamento-a.faturamento).slice(0,10),
+      topItens: Object.values(itemMap).sort((a,b)=>b.faturamento-a.faturamento).slice(0,10),
+    };
+
+    FAT_DATA[storeName] = summary;
+    log.innerHTML += `✅ Faturamento: ${fmt(fat)} | Lucro: ${fmt(luc)}\n`;
+    log.innerHTML += `✅ Faturamento ${storeName} atualizado com sucesso!\n`;
+
+    buildFatPills();
+    currentFatStore = storeName;
+    renderFaturamento(storeName);
+
+  } catch(err){
+    log.innerHTML += `❌ Erro ao processar faturamento: ${err.message}\n`;
+    console.error(err);
+  }
 }
 
 function processFileEstoque(ws, storeName, log){

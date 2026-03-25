@@ -1195,18 +1195,41 @@ function processFileFaturamento(ws, storeName, log){
 
     const dataRows = raw.slice(headerIdx+1);
 
-    const vendedoresPecas = ['Thiago Nunes','Thiago Miranda Dutra'];
-    const consultoresOficina = ['Edenilson belini','Gabriel Alves Jacomini','Mariana Moraes'];
+    const vendedorConfig = {
+      'Itu': {
+        pecas: {'Thiago Nunes':'Balcão','Thiago Miranda Dutra':'Telepeças'},
+        oficina: ['Edenilson belini','Gabriel Alves Jacomini','Mariana Moraes'],
+      },
+      'Itapeva': {
+        pecas: {'Victor Samuel Urbano dos Santos':'Telepeças','João Paulo Freitas Guimaraes':'Balcão'},
+        oficina: ['Tairine Santos Rosa'],
+      },
+      'Sorocaba': {
+        pecas: {},
+        oficina: [],
+      },
+    };
+
+    const cfg = vendedorConfig[storeName] || {pecas:{},oficina:[]};
+    const vendedoresPecas = Object.keys(cfg.pecas);
+    const consultoresOficina = cfg.oficina;
     const validNames = [...vendedoresPecas,...consultoresOficina];
+
+    if(!validNames.length){
+      // If no config for this store, accept all vendedores
+      log.innerHTML += `⚠ Sem configuração de vendedores para ${storeName}. Importando todos.\n`;
+    }
 
     const parsed = [];
     let skipped = 0;
     dataRows.forEach(r=>{
       if(!r || !r.length) return;
       const nome = String(r[colMap.nomeVendedor]||'').trim();
-      if(!nome || !validNames.includes(nome)){skipped++;return;}
-      const canal = vendedoresPecas.includes(nome)?'Vendas Peças':'Oficina';
-      const detalhe = nome==='Thiago Nunes'?'Balcão':nome==='Thiago Miranda Dutra'?'Telepeças':'Consultor';
+      if(!nome) return;
+      if(validNames.length && !validNames.includes(nome)){skipped++;return;}
+      const isPecas = vendedoresPecas.includes(nome);
+      const canal = isPecas?'Vendas Peças':consultoresOficina.includes(nome)?'Oficina':'Outros';
+      const detalhe = cfg.pecas[nome] || (consultoresOficina.includes(nome)?'Consultor':'');
 
       const emissaoRaw = r[colMap.emissao]||'';
       let emissao = String(emissaoRaw);
